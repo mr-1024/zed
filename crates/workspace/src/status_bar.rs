@@ -103,6 +103,7 @@ pub struct StatusBar {
     active_pane: Entity<Pane>,
     multi_workspace: Option<WeakEntity<MultiWorkspace>>,
     focus_handle: FocusHandle,
+    vertical: bool,
     _observe_active_pane: Subscription,
 }
 
@@ -116,7 +117,9 @@ impl Render for StatusBar {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let sidebar = SidebarStatus::query(&self.multi_workspace, cx);
 
-        h_flex()
+        let vertical = self.vertical;
+        div()
+            .flex()
             .id("status-bar")
             .track_focus(&self.focus_handle)
             .key_context("StatusBar")
@@ -148,9 +151,15 @@ impl Render for StatusBar {
                 }),
             )
             .w_full()
-            .justify_between()
-            .gap(DynamicSpacing::Base08.rems(cx))
-            .p(DynamicSpacing::Base04.rems(cx))
+            .when(vertical, |el| {
+                el.flex_col().items_center().gap_1().px_1().py_2()
+            })
+            .when(!vertical, |el| {
+                el.items_center()
+                    .justify_between()
+                    .gap(DynamicSpacing::Base08.rems(cx))
+                    .p(DynamicSpacing::Base04.rems(cx))
+            })
             .bg(cx.theme().colors().status_bar_background)
             .map(|el| match window.window_decorations() {
                 Decorations::Server => el,
@@ -192,10 +201,11 @@ impl StatusBar {
         sidebar: &SidebarStatus,
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
-        h_flex()
+        div()
+            .flex()
             .gap_1()
-            .min_w_0()
-            .overflow_x_hidden()
+            .when(self.vertical, |el| el.flex_col().items_center())
+            .when(!self.vertical, |el| el.min_w_0().overflow_x_hidden())
             .when(
                 sidebar.show_toggle && !sidebar.open && sidebar.side == SidebarSide::Left,
                 |this| this.child(self.render_sidebar_toggle(sidebar, cx)),
@@ -210,10 +220,12 @@ impl StatusBar {
         sidebar: &SidebarStatus,
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
-        h_flex()
+        div()
+            .flex()
             .flex_shrink_0()
             .gap_1()
-            .overflow_x_hidden()
+            .when(self.vertical, |el| el.flex_col().items_center())
+            .when(!self.vertical, |el| el.overflow_x_hidden())
             .children(
                 self.right_items
                     .iter()
@@ -336,12 +348,18 @@ impl StatusBar {
             active_pane: active_pane.clone(),
             multi_workspace,
             focus_handle: cx.focus_handle(),
+            vertical: false,
             _observe_active_pane: cx.observe_in(active_pane, window, |this, _, window, cx| {
                 this.update_active_pane_item(window, cx)
             }),
         };
         this.update_active_pane_item(window, cx);
         this
+    }
+
+    pub fn set_vertical(&mut self, vertical: bool, cx: &mut Context<Self>) {
+        self.vertical = vertical;
+        cx.notify();
     }
 
     pub fn set_multi_workspace(

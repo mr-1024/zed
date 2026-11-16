@@ -388,6 +388,7 @@ struct PanelEntry {
 
 pub struct PanelButtons {
     dock: Entity<Dock>,
+    vertical: bool,
     _settings_subscription: Subscription,
 }
 
@@ -1384,10 +1385,23 @@ impl Render for Dock {
 
 impl PanelButtons {
     pub fn new(dock: Entity<Dock>, cx: &mut Context<Self>) -> Self {
+        Self::new_with_orientation(dock, false, cx)
+    }
+
+    pub fn new_vertical(dock: Entity<Dock>, cx: &mut Context<Self>) -> Self {
+        Self::new_with_orientation(dock, true, cx)
+    }
+
+    fn new_with_orientation(
+        dock: Entity<Dock>,
+        vertical: bool,
+        cx: &mut Context<Self>,
+    ) -> Self {
         cx.observe(&dock, |_, _, cx| cx.notify()).detach();
         let settings_subscription = cx.observe_global::<SettingsStore>(|_, cx| cx.notify());
         Self {
             dock,
+            vertical,
             _settings_subscription: settings_subscription,
         }
     }
@@ -1575,18 +1589,24 @@ impl Render for PanelButtons {
 
         let has_buttons = !buttons.is_empty();
 
-        h_flex()
+        let vertical = self.vertical;
+        div()
+            .flex()
             .gap_1()
+            .when(vertical, |this| this.flex_col().w_full().px_1().py_2().items_center())
+            .when(!vertical, |this| this.items_center())
             .when(
-                has_buttons
+                !vertical
+                    && has_buttons
                     && (dock.position == DockPosition::Bottom
                         || dock.position == DockPosition::Right),
                 |this| this.child(Divider::vertical().color(DividerColor::Border)),
             )
             .children(buttons)
-            .when(has_buttons && dock.position == DockPosition::Left, |this| {
-                this.child(Divider::vertical().color(DividerColor::Border))
-            })
+            .when(
+                !vertical && has_buttons && dock.position == DockPosition::Left,
+                |this| this.child(Divider::vertical().color(DividerColor::Border)),
+            )
     }
 }
 

@@ -2098,6 +2098,28 @@ impl Render for MultiWorkspace {
             (sidebar, None)
         };
 
+        let activity_bar = {
+            let colors = cx.theme().colors();
+            let status_bar = self.workspace().read(cx).status_bar().clone();
+            v_flex()
+                .h_full()
+                .w(px(36.))
+                .flex_shrink_0()
+                .bg(colors.panel_background)
+                .border_r_1()
+                .border_color(colors.border)
+                .child(self.workspace().read(cx).activity_bar_buttons())
+                .child(
+                    div()
+                        .id("activity-bar-status")
+                        .flex_1()
+                        .min_h_0()
+                        .overflow_y_scroll()
+                        .child(status_bar),
+                )
+                .into_any_element()
+        };
+
         let ui_font = theme_settings::setup_ui_font(window, cx);
         let text_color = cx.theme().colors().text;
 
@@ -2202,6 +2224,7 @@ impl Render for MultiWorkspace {
                         ))
                     },
                 )
+                .child(activity_bar)
                 .children(left_sidebar)
                 .child(
                     div()

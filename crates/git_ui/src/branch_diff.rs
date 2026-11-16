@@ -3,7 +3,7 @@ use crate::{
     diff_multibuffer::DiffMultibuffer,
     git_panel::GitStatusEntry,
     project_diff::{
-        self, CompareWithBranch, DeployBranchDiff, ProjectDiff, ReviewDiff,
+        self, DeployBranchDiff, ProjectDiff, ReviewDiff,
         render_send_review_to_agent_button,
     },
 };
@@ -13,10 +13,14 @@ use editor::{
     Addon, Editor, EditorEvent, HiddenDiffHunkRenderer, SplittableEditor,
     actions::SendReviewToAgent,
 };
-use git::{repository::DiffType, status::FileStatus};
+use git::{
+    CompareWithBranch,
+    repository::{DiffType, RepoPath},
+    status::FileStatus,
+};
 use gpui::{
-    Action, App, AppContext as _, Entity, EventEmitter, FocusHandle, Focusable, Render,
-    SharedString, Subscription, Task, WeakEntity,
+    Action, App, AppContext as _, Entity, EventEmitter, FocusHandle, Focusable,
+    Render, SharedString, Subscription, Task, WeakEntity,
 };
 use language::{BufferId, Capability};
 use project::{
@@ -75,7 +79,81 @@ impl BranchDiff {
             Self::deploy_branch_diff(workspace, window, cx)
         });
         workspace.register_action(Self::compare_with_branch);
+        workspace.register_action(Self::compare_path_with_branch);
         workspace::register_serializable_item::<Self>(cx);
+    }
+
+    pub(crate) fn set_path_filter(
+        &mut self,
+        path_filter: Option<RepoPath>,
+        cx: &mut Context<Self>,
+    ) {
+        self.diff
+            .update(cx, |diff, cx| diff.set_path_filter(path_filter, cx));
+        cx.notify();
+    }
+
+    fn compare_path_with_branch(
+        workspace: &mut Workspace,
+        action: &git::ComparePathWithBranch,
+        window: &mut Window,
+        cx: &mut Context<Workspace>,
+    ) {
+        let project = workspace.project().clone();
+        let Some(repository) = project.read(cx).active_repository(cx) else {
+            return;
+        };
+        let path_filter = if action.path.is_empty() {
+            None
+        } else {
+            match RepoPath::new(&action.path) {
+                Ok(path) => Some(path),
+                Err(_) => return,
+            }
+        };
+        let path_filter = Arc::new(path_filter);
+        let workspace_handle = cx.entity().downgrade();
+
+        let on_select = Arc::new({
+            let workspace_handle = workspace_handle.clone();
+            let project = project.clone();
+            let repository = repository.clone();
+            let path_filter = path_filter.clone();
+            move |branch: git::repository::Branch, window: &mut Window, cx: &mut App| {
+                let base_ref: SharedString = branch.name().to_owned().into();
+                let project = project.clone();
+                let repository = repository.clone();
+                let path_filter = path_filter.clone();
+                let _ = workspace_handle.update(cx, |workspace, cx| {
+                    let deployed = Self::deploy_branch_diff_with_base_ref(
+                        workspace,
+                        project,
+                        repository,
+                        base_ref,
+                        None,
+                        None,
+                        window,
+                        cx,
+                    );
+                    if let Some(diff) = deployed {
+                        diff.update(cx, |diff, cx| {
+                            diff.set_path_filter((*path_filter).clone(), cx);
+                        });
+                    }
+                });
+            }
+        });
+
+        workspace.toggle_modal(window, cx, |window, cx| {
+            branch_picker::select_modal(
+                workspace_handle,
+                Some(repository),
+                None,
+                on_select,
+                window,
+                cx,
+            )
+        });
     }
 
     pub(crate) fn deploy_branch_diff(
@@ -204,7 +282,7 @@ impl BranchDiff {
         entry: Option<GitStatusEntry>,
         window: &mut Window,
         cx: &mut Context<Workspace>,
-    ) {
+    ) -> Option<Entity<Self>> {
         let existing = workspace.items_of_type::<Self>(cx).find(|item| {
             let item = item.read(cx);
             matches!(
@@ -224,7 +302,7 @@ impl BranchDiff {
                     branch_diff.move_to_entry(entry, window, cx);
                 });
             }
-            return;
+            return Some(existing);
         }
 
         let workspace_handle = cx.entity();
@@ -245,6 +323,7 @@ impl BranchDiff {
                 branch_diff.move_to_entry(entry, window, cx);
             });
         }
+        Some(branch_diff)
     }
 
     #[cfg(any(test, feature = "test-support"))]
@@ -354,6 +433,31 @@ impl BranchDiff {
 
     pub(crate) fn repo(&self, cx: &App) -> Option<Entity<Repository>> {
         self.diff.read(cx).repo(cx)
+    }
+
+    pub(crate) fn changed_files(&self, cx: &App) -> Vec<(RepoPath, FileStatus)> {
+        self.diff
+            .read(cx)
+            .branch_diff()
+            .read(cx)
+            .statuses_by_path()
+            .map(|statuses| {
+                statuses
+                    .iter()
+                    .map(|entry| (entry.repo_path.clone(), entry.status))
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
+    pub(crate) fn move_to_repo_path(
+        &mut self,
+        repo_path: &RepoPath,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.diff
+            .update(cx, |diff, cx| diff.move_to_repo_path(repo_path, window, cx));
     }
 
     pub(crate) fn branch_diff_list(&self, cx: &App) -> Entity<diff_buffer_list::DiffBufferList> {
@@ -630,8 +734,53 @@ impl Render for BranchDiff {
         div()
             .size_full()
             .on_action(cx.listener(Self::review_diff))
-            .child(self.diff.clone())
+            .child(
+                v_flex()
+                    .size_full()
+                    .child(self.render_title_bar(cx))
+                    .child(div().flex_1().min_h_0().child(self.diff.clone())),
+            )
     }
+}
+
+impl BranchDiff {
+    fn render_title_bar(&self, cx: &mut Context<Self>) -> AnyElement {
+        let base_ref = match self.diff_base(cx) {
+            DiffBase::Merge { base_ref } => base_ref.clone(),
+            _ => SharedString::from(""),
+        };
+        let (repo_name, branch) = self
+            .repo(cx)
+            .map(|repo| {
+                let snapshot = repo.read(cx).snapshot();
+                let repo_name = snapshot
+                    .work_directory_abs_path
+                    .file_name()
+                    .map(|name| name.to_string_lossy().to_string())
+                    .unwrap_or_default();
+                let branch = snapshot
+                    .branch
+                    .as_ref()
+                    .map(|branch| branch.name().to_string())
+                    .unwrap_or_default();
+                (repo_name, branch)
+            })
+            .unwrap_or_default();
+        let colors = cx.theme().colors();
+        h_flex()
+            .flex_shrink_0()
+            .w_full()
+            .px_2()
+            .py_1()
+            .border_b_1()
+            .border_color(colors.border_variant)
+            .child(
+                Label::new(format!("{repo_name} 中的 {base_ref} 和 {branch}"))
+                    .size(LabelSize::Small),
+            )
+            .into_any_element()
+    }
+
 }
 
 impl SerializableItem for BranchDiff {

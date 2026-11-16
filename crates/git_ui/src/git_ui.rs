@@ -39,6 +39,8 @@ use crate::{
 pub mod branch_diff;
 pub mod branch_picker;
 mod commit_context_menu;
+mod conflict_modal;
+mod diff_tree_panel;
 mod commit_modal;
 pub mod commit_tooltip;
 pub mod commit_view;
@@ -50,11 +52,13 @@ mod git_panel_settings;
 pub mod git_picker;
 mod git_runtime_diagnostics;
 mod git_timestamp;
+mod merge_view;
 pub mod multi_diff_view;
 pub mod picker_prompt;
 pub mod project_diff;
 pub(crate) mod remote_output;
 pub mod repository_selector;
+mod smart_merge;
 pub mod solo_diff_view;
 pub mod staged_diff;
 pub mod stash_picker;
@@ -108,11 +112,26 @@ pub fn init(cx: &mut App) {
     })
     .detach();
 
-    cx.observe_new(|workspace: &mut Workspace, _, cx| {
+    cx.observe_new(|workspace: &mut Workspace, window, cx| {
         ProjectDiff::register(workspace, cx);
         staged_diff::StagedDiff::register(workspace, cx);
         unstaged_diff::UnstagedDiff::register(workspace, cx);
         branch_diff::BranchDiff::register(workspace, cx);
+        smart_merge::register(workspace, cx);
+        merge_view::MergeView::register(workspace, cx);
+        conflict_modal::ConflictResolutionModal::register(workspace, cx);
+
+        if let Some(window) = window {
+            let workspace_handle = workspace.weak_handle();
+            let diff_tree_panel =
+                cx.new(|cx| diff_tree_panel::DiffTreePanel::new(workspace_handle, cx));
+            workspace.add_panel(diff_tree_panel, window, cx);
+        }
+        workspace.register_action(
+            |workspace, _: &git::ToggleDiffTreePanel, window, cx| {
+                workspace.toggle_panel_focus::<diff_tree_panel::DiffTreePanel>(window, cx);
+            },
+        );
         CommitModal::register(workspace);
         git_panel::register(workspace);
         repository_selector::register(workspace);

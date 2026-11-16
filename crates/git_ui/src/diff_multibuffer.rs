@@ -64,6 +64,16 @@ pub struct DiffMultibuffer {
 }
 
 impl DiffMultibuffer {
+    pub(crate) fn set_path_filter(
+        &mut self,
+        path_filter: Option<RepoPath>,
+        cx: &mut Context<Self>,
+    ) {
+        self.branch_diff
+            .update(cx, |branch_diff, cx| branch_diff.set_path_filter(path_filter, cx));
+        cx.notify();
+    }
+
     pub(crate) fn new(
         branch_diff: Entity<diff_buffer_list::DiffBufferList>,
         multibuffer_capability: Capability,
@@ -256,6 +266,24 @@ impl DiffMultibuffer {
                 });
             });
         });
+    }
+
+    pub(crate) fn move_to_repo_path(
+        &mut self,
+        repo_path: &RepoPath,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(repo) = self.branch_diff.read(cx).repo().cloned() else {
+            return;
+        };
+        let status = self
+            .branch_diff
+            .read(cx)
+            .status_for_path(repo_path, cx)
+            .unwrap_or(FileStatus::Untracked);
+        let path_key = project_diff_path_key(&repo.read(cx), repo_path, status, cx);
+        self.move_to_path(path_key, window, cx);
     }
 
     pub(crate) fn move_to_path(

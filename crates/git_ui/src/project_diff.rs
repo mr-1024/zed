@@ -55,8 +55,6 @@ actions!(
         /// Opens a new agent thread with the branch diff for review.
         ReviewDiff,
         LeaderAndFollower,
-        /// Compare with a specific branch
-        CompareWithBranch,
     ]
 );
 

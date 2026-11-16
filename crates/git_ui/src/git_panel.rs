@@ -43,8 +43,8 @@ use git::repository::{
 use git::stash::GitStash;
 use git::status::{DiffStat, StageStatus};
 use git::{
-    Amend, Commit, RestoreFile, Signoff, SkipHooks, ToggleStaged, repository::RepoPath,
-    status::FileStatus,
+    AbortMerge, Amend, Commit, ResolveConflicts, RestoreFile, Signoff, SkipHooks, ToggleStaged,
+    repository::RepoPath, status::FileStatus,
 };
 use git::{
     ExpandCommitEditor, GitHostingProviderRegistry, GitRemote, RestoreTrackedFiles, StageAll,
@@ -9155,6 +9155,58 @@ impl GitPanel {
         cx.notify();
     }
 
+    fn render_merge_banner(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
+        let repository = self.active_repository.clone()?;
+        let (snapshot, conflicts) = {
+            let repo = repository.read(cx);
+            let conflicts = repo
+                .cached_status()
+                .filter(|entry| entry.status.is_conflicted())
+                .count();
+            (repo.snapshot(), conflicts)
+        };
+        if snapshot.merge.message.is_none() && conflicts == 0 {
+            return None;
+        }
+        let branch = snapshot
+            .branch
+            .as_ref()
+            .map(|branch| branch.name().to_string())
+            .unwrap_or_default();
+        let colors = cx.theme().colors();
+        Some(
+            h_flex()
+                .w_full()
+                .px_2()
+                .py_1()
+                .gap_2()
+                .items_center()
+                .border_b_1()
+                .border_color(colors.border_variant)
+                .child(Label::new(format!("Merging {branch}")).size(LabelSize::Small))
+                .child(div().flex_1())
+                .when(conflicts > 0, |this| {
+                    this.child(
+                        IconButton::new("top-resolve-conflicts", IconName::Check)
+                            .icon_size(IconSize::Small)
+                            .tooltip(Tooltip::text("Resolve Conflicts"))
+                            .on_click(cx.listener(|_, _, window, cx| {
+                                window.dispatch_action(Box::new(ResolveConflicts), cx);
+                            })),
+                    )
+                })
+                .child(
+                    IconButton::new("top-abort-merge", IconName::Close)
+                        .icon_size(IconSize::Small)
+                        .tooltip(Tooltip::text("Abort Merge"))
+                        .on_click(cx.listener(|_, _, window, cx| {
+                            window.dispatch_action(Box::new(AbortMerge), cx);
+                        })),
+                )
+                .into_any_element(),
+        )
+    }
+
     fn render_status_entry(
         &self,
         ix: usize,
@@ -10022,6 +10074,7 @@ impl Render for GitPanel {
             .child(
                 v_flex()
                     .size_full()
+                    .children(self.render_merge_banner(cx))
                     .when(!self.commit_editor_expanded, |this| {
                         this.child(self.render_tab_bar(cx))
                     })

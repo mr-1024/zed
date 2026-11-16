@@ -3141,6 +3141,20 @@ impl Pane {
                 let pane = pane.clone();
                 let menu_context = menu_context.clone();
                 let extra_actions = item_handle.tab_extra_context_menu_actions(window, cx);
+                let compare_path = pane.upgrade().and_then(|pane| {
+                    let workspace = pane.read(cx).workspace.upgrade()?;
+                    let project = workspace.read(cx).project().clone();
+                    let project = project.read(cx);
+                    let git_store = project.git_store();
+                    let git_store = git_store.read(cx);
+                    item_handle.project_paths(cx).iter().find_map(|path| {
+                        git_store
+                            .repository_and_path_for_project_path(path, cx)
+                            .map(|(_, repo_path)| repo_path.to_string())
+                    })
+                });
+                let has_git_repo = compare_path.is_some();
+                let compare_path = compare_path.clone();
                 ContextMenu::build(window, cx, move |mut menu, window, cx| {
                     let close_active_item_action = CloseActiveItem {
                         save_intent: None,
@@ -3168,6 +3182,34 @@ impl Pane {
                         close_pinned: false,
                     };
                     if let Some(pane) = pane.upgrade() {
+                        if has_git_repo {
+                            let compare_path = compare_path.clone();
+                            menu = menu
+                                .submenu("Git", move |menu, _window, _cx| {
+                                    menu.when_some(compare_path.clone(), |menu, path| {
+                                        menu.action(
+                                            "Compare with Branch...",
+                                            Box::new(git::ComparePathWithBranch { path }),
+                                        )
+                                    })
+                                    .when_some(compare_path.clone(), |menu, path| {
+                                        menu.action(
+                                            "Smart Merge File",
+                                            Box::new(git::SmartMergeFile { path }),
+                                        )
+                                    })
+                                    .when_some(compare_path.clone(), |menu, path| {
+                                        menu.action(
+                                            "Open Merge Editor",
+                                            Box::new(git::OpenMergeEditor { path }),
+                                        )
+                                    })
+                                    .action("View File History", Box::new(git::FileHistory))
+                                    .action("Blame", Box::new(git::Blame))
+                                })
+                                .separator();
+                        }
+
                         menu = menu
                             .entry(
                                 "Close",

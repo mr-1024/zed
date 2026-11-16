@@ -1,5 +1,4 @@
 use collab_ui::collab_panel;
-use git_ui::project_diff::CompareWithBranch;
 use gpui::{App, Menu, MenuItem, OsAction};
 use project::DisableAiSettings;
 use release_channel::ReleaseChannel;
@@ -230,10 +229,10 @@ pub fn app_menus(cx: &mut App) -> Vec<Menu> {
             items: vec![
                 MenuItem::action("Git Panel", git_panel::ToggleFocus),
                 MenuItem::separator(),
-                MenuItem::action("Compare with Branch...", CompareWithBranch),
+                MenuItem::action("Compare with Branch...", git::CompareWithBranch),
                 MenuItem::action("File History", git::FileHistory),
                 MenuItem::action("Blame", git::Blame),
-                MenuItem::action("Changes", git::Diff),
+                MenuItem::action("Changes", git_ui::project_diff::Diff),
                 MenuItem::separator(),
                 MenuItem::action("Commit", git::Commit),
                 MenuItem::action("Stage All Changes", git::StageAll),
@@ -244,10 +243,13 @@ pub fn app_menus(cx: &mut App) -> Vec<Menu> {
                 MenuItem::action("Fetch", git::Fetch),
                 MenuItem::separator(),
                 MenuItem::action("Branches...", zed_actions::git::Branch),
+                MenuItem::action("New Branch...", zed_actions::git::Branch),
+                MenuItem::action("Create Tag at HEAD", git::CreateTagAtHead),
+                MenuItem::action("Resolve Conflicts...", git::ResolveConflicts),
                 MenuItem::action("Stashes...", zed_actions::git::ViewStash),
                 MenuItem::action("Worktrees...", zed_actions::git::Worktree),
                 MenuItem::separator(),
-                MenuItem::action("Restore File", git::RestoreFile),
+                MenuItem::action("Restore File", git::RestoreFile::default()),
             ],
         },
         Menu {

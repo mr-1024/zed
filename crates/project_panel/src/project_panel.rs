@@ -1184,6 +1184,18 @@ impl ProjectPanel {
                 (has_git_repo, has_history)
             };
 
+            let compare_path = {
+                let project_path = project::ProjectPath {
+                    worktree_id,
+                    path: entry.path.clone(),
+                };
+                project
+                    .git_store()
+                    .read(cx)
+                    .repository_and_path_for_project_path(&project_path, cx)
+                    .map(|(_, repo_path)| repo_path.to_string())
+            };
+
             let has_pasteable_content = self.has_pasteable_content(cx);
             let context_menu = ContextMenu::build(window, cx, |menu, _, _| {
                 menu.context(self.focus_handle.clone()).map(|menu| {
@@ -1268,6 +1280,24 @@ impl ProjectPanel {
                                     )
                                     .when(has_history, |menu| {
                                         menu.action("View History", Box::new(git::FileHistory))
+                                    })
+                                    .when_some(compare_path.clone(), |menu, path| {
+                                        menu.action(
+                                            "Compare with Branch...",
+                                            Box::new(git::ComparePathWithBranch { path }),
+                                        )
+                                    })
+                                    .when_some(compare_path.clone(), |menu, path| {
+                                        menu.action(
+                                            "Smart Merge File",
+                                            Box::new(git::SmartMergeFile { path }),
+                                        )
+                                    })
+                                    .when_some(compare_path.clone(), |menu, path| {
+                                        menu.action(
+                                            "Open Merge Editor",
+                                            Box::new(git::OpenMergeEditor { path }),
+                                        )
                                     })
                                     .when(!is_dir, |menu| {
                                         menu.action(

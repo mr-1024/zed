@@ -44,6 +44,7 @@ pub struct DiffBufferList {
     committed_tree_diff: Option<TreeDiff>,
     tree_diff: Option<TreeDiff>,
     statuses_by_path: Option<SumTree<StatusEntry>>,
+    path_filter: Option<RepoPath>,
     tree_diff_base_task: Option<Task<()>>,
     tree_diff_error: Option<SharedString>,
     _subscription: Subscription,
@@ -105,6 +106,7 @@ impl DiffBufferList {
             committed_tree_diff: None,
             tree_diff: None,
             statuses_by_path: None,
+            path_filter: None,
             tree_diff_base_task: None,
             tree_diff_error: None,
             _subscription: git_store_subscription,
@@ -152,6 +154,37 @@ impl DiffBufferList {
 
         cx.emit(BranchDiffEvent::DiffBaseChanged);
         *self.update_needed.borrow_mut() = ();
+    }
+
+    pub fn set_path_filter(&mut self, path_filter: Option<RepoPath>, cx: &mut Context<Self>) {
+        if self.path_filter == path_filter {
+            return;
+        }
+
+        self.path_filter = path_filter;
+        if let Some(statuses) = self.statuses_by_path.take() {
+            self.statuses_by_path =
+                Some(Self::filter_statuses(statuses, self.path_filter.as_ref()));
+        }
+        cx.emit(BranchDiffEvent::FileListChanged);
+        cx.notify();
+    }
+
+    fn filter_statuses(
+        statuses: SumTree<StatusEntry>,
+        path_filter: Option<&RepoPath>,
+    ) -> SumTree<StatusEntry> {
+        let Some(path_filter) = path_filter else {
+            return statuses;
+        };
+        let prefix = path_filter.as_std_path();
+        SumTree::from_iter(
+            statuses
+                .iter()
+                .filter(|entry| entry.repo_path.as_std_path().starts_with(prefix))
+                .cloned(),
+            (),
+        )
     }
 
     pub async fn handle_status_updates(
@@ -309,7 +342,10 @@ impl DiffBufferList {
         let tree_diff = tree_diff?;
         this.update(cx, |this, cx| {
             let statuses_by_path = this.repo.as_ref().map(|repo| {
-                build_statuses(&repo.read(cx).snapshot, &committed_tree_diff, &tree_diff)
+                Self::filter_statuses(
+                    build_statuses(&repo.read(cx).snapshot, &committed_tree_diff, &tree_diff),
+                    this.path_filter.as_ref(),
+                )
             });
             this.committed_tree_diff = Some(committed_tree_diff);
             this.tree_diff = Some(tree_diff);
@@ -341,6 +377,14 @@ impl DiffBufferList {
             let mut seen = HashSet::default();
 
             for item in repo.read(cx).cached_status() {
+                if self.path_filter.as_ref().is_some_and(|path_filter| {
+                    !item
+                        .repo_path
+                        .as_std_path()
+                        .starts_with(path_filter.as_std_path())
+                }) {
+                    continue;
+                }
                 let status = match self.diff_base {
                     DiffBase::Head => Some(item.status),
                     DiffBase::Index => item.status.staging().has_unstaged().then_some(item.status),
@@ -389,6 +433,11 @@ impl DiffBufferList {
             };
 
             for (path, branch_diff) in tree_diff.entries.iter() {
+                if self.path_filter.as_ref().is_some_and(|path_filter| {
+                    !path.as_std_path().starts_with(path_filter.as_std_path())
+                }) {
+                    continue;
+                }
                 if seen.contains(path) {
                     continue;
                 }

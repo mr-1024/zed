@@ -205,17 +205,17 @@ pub fn deploy_context_menu(
             .all::<PointUtf16>(&display_map)
             .into_iter()
             .any(|s| !s.is_empty());
-        let has_git_repo =
-            buffer
-                .anchor_to_buffer_anchor(anchor)
-                .is_some_and(|(buffer_anchor, _)| {
-                    project
-                        .read(cx)
-                        .git_store()
-                        .read(cx)
-                        .repository_and_path_for_buffer_id(buffer_anchor.buffer_id, cx)
-                        .is_some()
-                });
+        let compare_repo_path = buffer
+            .anchor_to_buffer_anchor(anchor)
+            .and_then(|(buffer_anchor, _)| {
+                project
+                    .read(cx)
+                    .git_store()
+                    .read(cx)
+                    .repository_and_path_for_buffer_id(buffer_anchor.buffer_id, cx)
+                    .map(|(_, repo_path)| repo_path.to_string())
+            });
+        let has_git_repo = compare_repo_path.is_some();
 
         let evaluate_selection = window.is_action_available(&EvaluateSelectedText, cx);
         let run_to_cursor = window.is_action_available(&RunToCursor, cx);
@@ -321,11 +321,28 @@ pub fn deploy_context_menu(
                     "Copy Permalink to Line",
                     Box::new(CopyPermalinkToLine),
                 )
-                .action_disabled_when(
-                    !has_git_repo,
-                    "View File History",
-                    Box::new(git::FileHistory),
-                );
+                .when(has_git_repo, |builder| {
+                    let compare_repo_path = compare_repo_path.clone();
+                    builder.submenu("Git", move |menu, _window, _cx| {
+                        menu.when_some(compare_repo_path.clone(), |menu, path| {
+                            menu.action(
+                                "Compare with Branch...",
+                                Box::new(git::ComparePathWithBranch { path }),
+                            )
+                        })
+                        .when_some(compare_repo_path.clone(), |menu, path| {
+                            menu.action("Smart Merge File", Box::new(git::SmartMergeFile { path }))
+                        })
+                        .when_some(compare_repo_path.clone(), |menu, path| {
+                            menu.action(
+                                "Open Merge Editor",
+                                Box::new(git::OpenMergeEditor { path }),
+                            )
+                        })
+                        .action("View File History", Box::new(git::FileHistory))
+                        .action("Blame", Box::new(git::Blame))
+                    })
+                });
             match focus {
                 Some(focus) => builder.context(focus),
                 None => builder,

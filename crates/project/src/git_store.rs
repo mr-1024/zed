@@ -10376,6 +10376,58 @@ impl Repository {
 
     /// Bypasses the serial git job queue: blobs are content-addressed, so this read
     /// doesn't depend on the status snapshot, and a diff issues one per changed file.
+    pub fn merge_abort(&mut self, _cx: &mut Context<Self>) -> oneshot::Receiver<Result<()>> {
+        self.send_job("merge_abort", None, move |git_repo, _| async move {
+            match git_repo {
+                RepositoryState::Local(LocalRepositoryState { backend, .. }) => {
+                    backend.merge_abort().await
+                }
+                RepositoryState::Remote(_) => {
+                    anyhow::bail!("merge abort is not supported for remote repositories")
+                }
+            }
+        })
+    }
+
+    pub fn load_merge_stage_texts(
+        &self,
+        repo_path: RepoPath,
+        cx: &App,
+    ) -> Task<Result<(Option<String>, Option<String>, Option<String>)>> {
+        let repository_state = self.repository_state.clone();
+        cx.background_spawn(async move {
+            match repository_state.await.map_err(|err| anyhow::anyhow!(err))? {
+                RepositoryState::Local(LocalRepositoryState { backend, .. }) => {
+                    let revisions = vec![
+                        format!(":1:{}", repo_path.as_unix_str()),
+                        format!(":2:{}", repo_path.as_unix_str()),
+                        format!(":3:{}", repo_path.as_unix_str()),
+                    ];
+                    let mut loaded_revisions = backend.load_revisions(revisions).await?.into_iter();
+                    let base = loaded_revisions
+                        .next()
+                        .flatten()
+                        .map(decode_git_text)
+                        .transpose()?;
+                    let ours = loaded_revisions
+                        .next()
+                        .flatten()
+                        .map(decode_git_text)
+                        .transpose()?;
+                    let theirs = loaded_revisions
+                        .next()
+                        .flatten()
+                        .map(decode_git_text)
+                        .transpose()?;
+                    Ok((base, ours, theirs))
+                }
+                RepositoryState::Remote(_) => {
+                    anyhow::bail!("merge stages are unavailable for remote repositories")
+                }
+            }
+        })
+    }
+
     fn load_blob_content(&self, oid: Oid, cx: &App) -> Task<Result<String>> {
         let repository_id = self.snapshot.id;
         let repository_state = self.repository_state.clone();

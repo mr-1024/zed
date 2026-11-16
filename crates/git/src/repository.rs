@@ -909,6 +909,11 @@ pub trait GitRepository: Send + Sync {
         env: Arc<HashMap<String, String>>,
     ) -> BoxFuture<'_, Result<()>>;
 
+    /// Aborts the merge in progress, restoring the pre-merge state.
+    fn merge_abort(&self) -> BoxFuture<'_, Result<()>> {
+        async { anyhow::bail!("merge abort is not supported for this repository") }.boxed()
+    }
+
     /// Restores `paths` in the working tree.
     ///
     /// With `Some(commit)`, both the index and the working tree are reset to the
@@ -1572,6 +1577,21 @@ impl GitRepository for RealGitRepository {
             anyhow::ensure!(
                 output.status.success(),
                 "Failed to reset:\n{}",
+                String::from_utf8_lossy(&output.stderr),
+            );
+            Ok(())
+        }
+        .boxed()
+    }
+
+    fn merge_abort(&self) -> BoxFuture<'_, Result<()>> {
+        let git = self.git_binary_in_worktree();
+        async move {
+            let git = git?;
+            let output = git.build_command(&["merge", "--abort"]).output().await?;
+            anyhow::ensure!(
+                output.status.success(),
+                "Failed to abort merge:\n{}",
                 String::from_utf8_lossy(&output.stderr),
             );
             Ok(())

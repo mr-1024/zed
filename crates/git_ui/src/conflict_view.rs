@@ -1,8 +1,8 @@
 use agent_settings::AgentSettings;
 use collections::{HashMap, HashSet};
 use editor::{
-    ConflictsOurs, ConflictsOursMarker, ConflictsOuter, ConflictsTheirs, ConflictsTheirsMarker,
-    Editor, MultiBuffer, RowHighlightOptions,
+    ConflictsBase, ConflictsOurs, ConflictsOursMarker, ConflictsOuter, ConflictsTheirs,
+    ConflictsTheirsMarker, Editor, MultiBuffer, RowHighlightOptions,
     display_map::{BlockContext, BlockPlacement, BlockProperties, BlockStyle, CustomBlockId},
 };
 use gpui::{
@@ -227,6 +227,7 @@ fn conflicts_updated(
         editor
             .remove_highlighted_rows::<ConflictsOursMarker>(removed_highlighted_ranges.clone(), cx);
         editor.remove_highlighted_rows::<ConflictsTheirs>(removed_highlighted_ranges.clone(), cx);
+        editor.remove_highlighted_rows::<ConflictsBase>(removed_highlighted_ranges.clone(), cx);
         editor.remove_highlighted_rows::<ConflictsTheirsMarker>(
             removed_highlighted_ranges.clone(),
             cx,
@@ -244,6 +245,10 @@ fn conflicts_updated(
                 conflict.range.clone(),
                 conflict.ours.clone(),
                 conflict.theirs.clone(),
+                conflict
+                    .base
+                    .clone()
+                    .unwrap_or_else(|| conflict.ours.start..conflict.ours.start),
             ]
         }))
         .into_iter();
@@ -253,8 +258,9 @@ fn conflicts_updated(
         let outer = converted_ranges.next().flatten();
         let ours = converted_ranges.next().flatten();
         let theirs = converted_ranges.next().flatten();
+        let base = converted_ranges.next().flatten();
         if let (Some(outer), Some(ours), Some(theirs)) = (outer, ours, theirs) {
-            update_conflict_highlighting(editor, conflict, outer, ours, theirs, cx);
+            update_conflict_highlighting(editor, conflict, outer, ours, theirs, base, cx);
         }
 
         if let Some(anchor) = block_anchor {
@@ -296,6 +302,7 @@ fn update_conflict_highlighting(
     outer: Range<editor::Anchor>,
     ours: Range<editor::Anchor>,
     theirs: Range<editor::Anchor>,
+    base: Option<Range<editor::Anchor>>,
     cx: &mut Context<Editor>,
 ) {
     log::debug!("update conflict highlighting for {conflict:?}");
@@ -330,6 +337,15 @@ fn update_conflict_highlighting(
         options,
         cx,
     );
+
+    if let (true, Some(base)) = (conflict.base.is_some(), base) {
+        editor.highlight_rows::<ConflictsBase>(
+            base,
+            |cx| cx.theme().colors().text_muted.opacity(0.12),
+            options,
+            cx,
+        );
+    }
 }
 
 fn render_conflict_buttons(
@@ -403,6 +419,26 @@ fn render_conflict_buttons(
                     }
                 }),
         )
+        .when_some(conflict.base.clone(), |this, base| {
+            this.child(
+                Button::new("base", "Use Base")
+                    .label_size(LabelSize::Small)
+                    .on_click({
+                        let editor = editor.clone();
+                        let conflict = conflict.clone();
+                        move |_, window, cx| {
+                            resolve_conflict(
+                                editor.clone(),
+                                conflict.clone(),
+                                vec![base.clone()],
+                                window,
+                                cx,
+                            )
+                            .detach()
+                        }
+                    }),
+            )
+        })
         .when(is_ai_enabled, |this| {
             this.child(Divider::vertical()).child(
                 Button::new("resolve-with-agent", "Resolve with Agent")

@@ -121,6 +121,8 @@ actions!(
         Signoff,
         /// Cancels the current git operation.
         Cancel,
+        /// Compares the current branch with a branch selected by the user.
+        CompareWithBranch,
         /// Expands the commit message editor.
         ExpandCommitEditor,
         /// Toggles whether the commit message editor fills all the available
@@ -169,6 +171,48 @@ pub struct RenameBranch {
 pub struct RestoreFile {
     #[serde(default)]
     pub skip_prompt: bool,
+}
+
+/// Compares the working tree with a branch selected by the user, scoped to a
+/// single file or directory.
+#[derive(Clone, Debug, Default, PartialEq, Deserialize, JsonSchema, Action)]
+#[action(namespace = git)]
+#[serde(deny_unknown_fields)]
+pub struct ComparePathWithBranch {
+    pub path: String,
+}
+
+/// Runs a three-way merge for the given conflicted file, automatically
+/// applying non-conflicting changes and keeping markers for real conflicts.
+#[derive(Clone, Debug, Default, PartialEq, Deserialize, JsonSchema, Action)]
+#[action(namespace = git)]
+#[serde(deny_unknown_fields)]
+pub struct SmartMergeFile {
+    pub path: String,
+}
+
+/// Toggles the changed files panel for branch comparisons.
+#[derive(Clone, Debug, Default, PartialEq, Deserialize, JsonSchema, Action)]
+#[action(namespace = git)]
+pub struct ToggleDiffTreePanel;
+
+/// Aborts the merge in progress and restores the pre-merge state.
+#[derive(Clone, Debug, Default, PartialEq, Deserialize, JsonSchema, Action)]
+#[action(namespace = git)]
+pub struct AbortMerge;
+
+/// Opens a list of conflicted files with options to accept either side or
+/// open the merge editor.
+#[derive(Clone, Debug, Default, PartialEq, Deserialize, JsonSchema, Action)]
+#[action(namespace = git)]
+pub struct ResolveConflicts;
+
+/// Opens a three-pane merge editor for the given conflicted file.
+#[derive(Clone, Debug, Default, PartialEq, Deserialize, JsonSchema, Action)]
+#[action(namespace = git)]
+#[serde(deny_unknown_fields)]
+pub struct OpenMergeEditor {
+    pub path: String,
 }
 
 /// The length of a Git short SHA.

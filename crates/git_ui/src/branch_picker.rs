@@ -1097,6 +1097,28 @@ impl BranchListDelegate {
         self.modifiers.alt && self.hovered_delete_index == Some(index)
     }
 
+    fn open_create_branch_modal(
+        &mut self,
+        base_branch: SharedString,
+        cx: &mut Context<Picker<Self>>,
+    ) {
+        let Some(repo) = self.repo.clone() else {
+            return;
+        };
+        let workspace = self.workspace.clone();
+        cx.spawn(async move |_, cx| {
+            workspace
+                .update_in(cx, |workspace, window, cx| {
+                    workspace.toggle_modal(window, cx, |window, cx| {
+                        CreateBranchModal::new(base_branch.clone(), repo.clone(), window, cx)
+                    });
+                })
+                .ok();
+        })
+        .detach();
+        cx.emit(DismissEvent);
+    }
+
     fn create_branch(
         &self,
         from_branch: Option<SharedString>,
@@ -1599,6 +1621,11 @@ impl PickerDelegate for BranchListDelegate {
                     return;
                 }
 
+                if secondary {
+                    self.open_create_branch_modal(branch.name().to_owned().into(), cx);
+                    return;
+                }
+
                 let current_branch = self.repo.as_ref().map(|repo| {
                     repo.read_with(cx, |repo, _| {
                         repo.branch.as_ref().map(|branch| branch.ref_name.clone())
@@ -2067,6 +2094,18 @@ impl PickerDelegate for BranchListDelegate {
                     });
 
                 let selected_branch = selected_entry.and_then(|entry| entry.as_branch());
+                let branch_from_selected_button = selected_branch.map(|branch| {
+                    let button_label = format!("New Branch From: {}", branch.name());
+
+                    Button::new("branch-from-selected", button_label)
+                        .key_binding(
+                            KeyBinding::for_action_in(&menu::SecondaryConfirm, &focus_handle, cx)
+                                .map(|kb| kb.size(rems_from_px(12_f32))),
+                        )
+                        .on_click(cx.listener(|this, _, window, cx| {
+                            this.delegate.confirm(true, window, cx);
+                        }))
+                });
                 let delete_label = if selected_branch.is_some_and(|branch| branch.is_remote()) {
                     "Delete Local Tracking Branch"
                 } else {
@@ -2111,6 +2150,7 @@ impl PickerDelegate for BranchListDelegate {
                 Some(
                     footer_container()
                         .justify_end()
+                        .children(branch_from_selected_button)
                         .map(|this| match branch_from_default_button {
                             Some(button) => this.child(button).child(
                                 Button::new("create", "Create")
@@ -2188,6 +2228,88 @@ impl PickerDelegate for BranchListDelegate {
             ),
             PickerState::NewRemote => None,
         }
+    }
+}
+
+struct CreateBranchModal {
+    base_branch: SharedString,
+    editor: Entity<Editor>,
+    repo: Entity<Repository>,
+}
+
+impl CreateBranchModal {
+    fn new(
+        base_branch: SharedString,
+        repo: Entity<Repository>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Self {
+        let editor = cx.new(|cx| {
+            let mut editor = Editor::single_line(window, cx);
+            editor.set_placeholder_text("New branch name", window, cx);
+            editor
+        });
+        Self {
+            base_branch,
+            editor,
+            repo,
+        }
+    }
+
+    fn cancel(&mut self, _: &menu::Cancel, _window: &mut Window, cx: &mut Context<Self>) {
+        cx.emit(DismissEvent);
+    }
+
+    fn confirm(&mut self, _: &menu::Confirm, window: &mut Window, cx: &mut Context<Self>) {
+        let branch_name = self.editor.read(cx).text(cx).trim().to_string();
+        if branch_name.is_empty() {
+            return;
+        }
+
+        let repo = self.repo.clone();
+        let base_branch = self.base_branch.to_string();
+        cx.spawn(async move |_, cx| {
+            repo.update(cx, |repo, _| {
+                repo.create_branch(normalize_branch_name(&branch_name), Some(base_branch))
+            })
+            .await??;
+            Ok(())
+        })
+        .detach_and_prompt_err("Failed to create branch", window, cx, |error, _, _| {
+            Some(error.to_string())
+        });
+        cx.emit(DismissEvent);
+    }
+}
+
+impl EventEmitter<DismissEvent> for CreateBranchModal {}
+impl ModalView for CreateBranchModal {}
+impl Focusable for CreateBranchModal {
+    fn focus_handle(&self, cx: &App) -> FocusHandle {
+        self.editor.read(cx).focus_handle(cx)
+    }
+}
+
+impl Render for CreateBranchModal {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let title = format!("New Branch From {}", self.base_branch);
+        v_flex()
+            .key_context("CreateBranchModal")
+            .on_action(cx.listener(Self::cancel))
+            .on_action(cx.listener(Self::confirm))
+            .elevation_2(cx)
+            .w(rems(34.))
+            .child(
+                h_flex()
+                    .px_3()
+                    .pt_2()
+                    .pb_1()
+                    .w_full()
+                    .gap_1p5()
+                    .child(Icon::new(IconName::GitBranch).size(IconSize::XSmall))
+                    .child(Headline::new(title).size(HeadlineSize::XSmall)),
+            )
+            .child(div().px_3().pb_3().w_full().child(self.editor.clone()))
     }
 }
 

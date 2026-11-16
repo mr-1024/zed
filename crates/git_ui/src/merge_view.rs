@@ -1,10 +1,5 @@
-use std::sync::Arc;
-
 use anyhow::Context as _;
-use editor::{
-    Editor, RowHighlightOptions,
-    display_map::{BlockContext, BlockPlacement, BlockProperties, BlockStyle, CustomBlockId},
-};
+use editor::{Editor, RowHighlightOptions, SelectionEffects, scroll::Autoscroll};
 use gpui::{
     AnyElement, App, AppContext as _, Context, Entity, EventEmitter, FocusHandle, Focusable, Hsla,
     IntoElement, ParentElement, Render, SharedString, Styled, Subscription, WeakEntity, Window,
@@ -14,7 +9,7 @@ use git::{OpenMergeEditor, ResolveConflicts, repository::RepoPath};
 use language::Buffer;
 use multi_buffer::MultiBufferOffset;
 use project::{Project, git_store::Repository};
-use ui::prelude::*;
+use ui::{Tooltip, prelude::*};
 use util::ResultExt as _;
 use workspace::{
     Item, Workspace,
@@ -39,8 +34,6 @@ struct Fragment {
     base: (usize, usize),
     result_start: usize,
     result_end: usize,
-    ours_arrow: Option<CustomBlockId>,
-    theirs_arrow: Option<CustomBlockId>,
     resolved: bool,
 }
 
@@ -62,6 +55,7 @@ pub struct MergeView {
     theirs_editor: Entity<Editor>,
     show_base: bool,
     fragments: Vec<Fragment>,
+    current: Option<usize>,
     initial_fragments: Vec<Fragment>,
     initial_result_text: String,
     _subscriptions: Vec<Subscription>,
@@ -250,36 +244,6 @@ impl MergeView {
             cx,
         );
 
-        let view = cx.entity().downgrade();
-        let ours_offsets = line_offsets(&ours_text);
-        let theirs_offsets = line_offsets(&theirs_text);
-        let ours_arrows = insert_side_arrows(
-            &ours_editor,
-            &fragments,
-            &ours_offsets,
-            Side::Ours,
-            view.clone(),
-            cx,
-        );
-        for (index, block_id) in ours_arrows {
-            if let Some(fragment) = fragments.get_mut(index) {
-                fragment.ours_arrow = Some(block_id);
-            }
-        }
-        let theirs_arrows = insert_side_arrows(
-            &theirs_editor,
-            &fragments,
-            &theirs_offsets,
-            Side::Theirs,
-            view,
-            cx,
-        );
-        for (index, block_id) in theirs_arrows {
-            if let Some(fragment) = fragments.get_mut(index) {
-                fragment.theirs_arrow = Some(block_id);
-            }
-        }
-
         let focus_handle = result_editor.focus_handle(cx);
 
         Self {
@@ -299,6 +263,7 @@ impl MergeView {
             base_editor,
             theirs_editor,
             show_base: false,
+            current: None,
             initial_fragments: fragments.clone(),
             initial_result_text: result_text,
             fragments,
@@ -317,19 +282,13 @@ impl MergeView {
         let text = match side {
             Side::Ours => lines_text(&self.ours_lines, fragment.ours),
             Side::Theirs => lines_text(&self.theirs_lines, fragment.theirs),
+            Side::Both => {
+                let mut text = lines_text(&self.ours_lines, fragment.ours);
+                text.push_str(&lines_text(&self.theirs_lines, fragment.theirs));
+                text
+            }
         };
         let delta = text.len() as isize - (end.saturating_sub(start)) as isize;
-
-        if let Some(block_id) = fragment.ours_arrow {
-            self.ours_editor.update(cx, |editor, cx| {
-                editor.remove_blocks(std::iter::once(block_id).collect(), None, cx);
-            });
-        }
-        if let Some(block_id) = fragment.theirs_arrow {
-            self.theirs_editor.update(cx, |editor, cx| {
-                editor.remove_blocks(std::iter::once(block_id).collect(), None, cx);
-            });
-        }
 
         self.result_buffer.update(cx, |buffer, cx| {
             buffer.edit([(start..end, text.clone())], None, cx);
@@ -338,8 +297,6 @@ impl MergeView {
         let fragment = &mut self.fragments[index];
         fragment.result_end = fragment.result_start + text.len();
         fragment.resolved = true;
-        fragment.ours_arrow = None;
-        fragment.theirs_arrow = None;
         for later in self.fragments.iter_mut().skip(index + 1) {
             later.result_start = (later.result_start as isize + delta).max(0) as usize;
             later.result_end = (later.result_end as isize + delta).max(0) as usize;
@@ -354,19 +311,71 @@ impl MergeView {
         if fragment.kind == FragmentKind::Equal {
             return;
         }
-        if let Some(block_id) = fragment.ours_arrow.take() {
-            self.ours_editor.update(cx, |editor, cx| {
-                editor.remove_blocks(std::iter::once(block_id).collect(), None, cx);
-            });
-        }
-        if let Some(block_id) = fragment.theirs_arrow.take() {
-            self.theirs_editor.update(cx, |editor, cx| {
-                editor.remove_blocks(std::iter::once(block_id).collect(), None, cx);
-            });
-        }
         let fragment = self.fragments.get_mut(index).unwrap();
         fragment.resolved = true;
         cx.notify();
+    }
+
+    fn changed_indices(&self) -> Vec<usize> {
+        self.fragments
+            .iter()
+            .enumerate()
+            .filter(|(_, fragment)| fragment.kind != FragmentKind::Equal)
+            .map(|(index, _)| index)
+            .collect()
+    }
+
+    fn navigate_change(&mut self, forward: bool, window: &mut Window, cx: &mut Context<Self>) {
+        let indices = self.changed_indices();
+        if indices.is_empty() {
+            return;
+        }
+        let position = self
+            .current
+            .and_then(|current| indices.iter().position(|&index| index == current));
+        let next_position = match position {
+            Some(position) if forward => (position + 1) % indices.len(),
+            Some(position) => (position + indices.len() - 1) % indices.len(),
+            None => 0,
+        };
+        self.jump_to_fragment(indices[next_position], window, cx);
+    }
+
+    fn jump_to_fragment(
+        &mut self,
+        index: usize,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(fragment) = self.fragments.get(index) else {
+            return;
+        };
+        let (start, end) = (fragment.result_start, fragment.result_end);
+        self.current = Some(index);
+        self.result_editor.update(cx, |editor, cx| {
+            let snapshot = editor.buffer().read(cx).snapshot(cx);
+            let range = snapshot.anchor_before(MultiBufferOffset(start))
+                ..snapshot.anchor_after(MultiBufferOffset(end));
+            editor.change_selections(
+                SelectionEffects::scroll(Autoscroll::center()),
+                window,
+                cx,
+                |selections| selections.select_ranges([range]),
+            );
+        });
+        cx.notify();
+    }
+
+    fn accept_current(&mut self, side: Side, cx: &mut Context<Self>) {
+        if let Some(index) = self.current {
+            self.accept_fragment(index, side, cx);
+        }
+    }
+
+    fn ignore_current(&mut self, cx: &mut Context<Self>) {
+        if let Some(index) = self.current {
+            self.ignore_fragment(index, cx);
+        }
     }
 
     fn accept_side(&mut self, take_ours: bool, cx: &mut Context<Self>) {
@@ -383,54 +392,11 @@ impl MergeView {
     }
 
     fn accept_both(&mut self, cx: &mut Context<Self>) {
-        for fragment in &self.fragments {
-            if let Some(block_id) = fragment.ours_arrow {
-                self.ours_editor.update(cx, |editor, cx| {
-                    editor.remove_blocks(std::iter::once(block_id).collect(), None, cx);
-                });
-            }
-            if let Some(block_id) = fragment.theirs_arrow {
-                self.theirs_editor.update(cx, |editor, cx| {
-                    editor.remove_blocks(std::iter::once(block_id).collect(), None, cx);
-                });
-            }
-        }
-
-        let text = self.initial_result_text.clone();
-        self.result_buffer.update(cx, |buffer, cx| {
-            let len = buffer.len();
-            buffer.edit([(0..len, text)], None, cx);
-        });
-
-        self.fragments = self.initial_fragments.clone();
-
-        let ours_offsets = line_offsets(&self.ours_lines.concat());
-        let theirs_offsets = line_offsets(&self.theirs_lines.concat());
-        let view = cx.entity().downgrade();
-        let ours_arrows = insert_side_arrows(
-            &self.ours_editor,
-            &self.fragments,
-            &ours_offsets,
-            Side::Ours,
-            view.clone(),
-            cx,
-        );
-        for (index, block_id) in ours_arrows {
-            if let Some(fragment) = self.fragments.get_mut(index) {
-                fragment.ours_arrow = Some(block_id);
-            }
-        }
-        let theirs_arrows = insert_side_arrows(
-            &self.theirs_editor,
-            &self.fragments,
-            &theirs_offsets,
-            Side::Theirs,
-            view,
-            cx,
-        );
-        for (index, block_id) in theirs_arrows {
-            if let Some(fragment) = self.fragments.get_mut(index) {
-                fragment.theirs_arrow = Some(block_id);
+        for index in 0..self.fragments.len() {
+            if self.fragments[index].kind == FragmentKind::Conflict
+                && !self.fragments[index].resolved
+            {
+                self.accept_fragment(index, Side::Both, cx);
             }
         }
         cx.notify();
@@ -497,6 +463,7 @@ impl MergeView {
 enum Side {
     Ours,
     Theirs,
+    Both,
 }
 
 impl Focusable for MergeView {
@@ -561,6 +528,43 @@ impl Render for MergeView {
                             .color(Color::Muted),
                     )
                     .child(div().flex_1())
+                    .child(
+                        h_flex()
+                            .gap_1()
+                            .child(
+                                IconButton::new("prev-change", IconName::ArrowUp)
+                                    .icon_size(IconSize::Small)
+                                    .tooltip(Tooltip::text("Previous Change"))
+                                    .on_click(cx.listener(|this, _, window, cx| {
+                                        this.navigate_change(false, window, cx);
+                                    })),
+                            )
+                            .child(
+                                IconButton::new("next-change", IconName::ArrowDown)
+                                    .icon_size(IconSize::Small)
+                                    .tooltip(Tooltip::text("Next Change"))
+                                    .on_click(cx.listener(|this, _, window, cx| {
+                                        this.navigate_change(true, window, cx);
+                                    })),
+                            )
+                            .child(
+                                Label::new(format!(
+                                    "{}/{}",
+                                    self.current
+                                        .map(|index| {
+                                            self.changed_indices()
+                                                .iter()
+                                                .position(|&i| i == index)
+                                                .map(|p| p + 1)
+                                                .unwrap_or(0)
+                                        })
+                                        .unwrap_or(0),
+                                    changes
+                                ))
+                                .size(LabelSize::Small)
+                                .color(Color::Muted),
+                            )
+                    )
                     .child(
                         h_flex()
                             .gap_2()
@@ -764,8 +768,6 @@ fn compute_fragments(base: &[String], ours: &[String], theirs: &[String]) -> Vec
                 theirs: (prev_t, t_s - prev_t),
                 result_start: 0,
                 result_end: 0,
-                ours_arrow: None,
-                theirs_arrow: None,
                 resolved: false,
             });
         }
@@ -798,8 +800,6 @@ fn compute_fragments(base: &[String], ours: &[String], theirs: &[String]) -> Vec
             theirs: (t_s, t_e - t_s),
             result_start: 0,
             result_end: 0,
-            ours_arrow: None,
-            theirs_arrow: None,
             resolved: false,
         });
 
@@ -816,8 +816,6 @@ fn compute_fragments(base: &[String], ours: &[String], theirs: &[String]) -> Vec
             theirs: (prev_t, theirs.len() - prev_t),
             result_start: 0,
             result_end: 0,
-            ours_arrow: None,
-            theirs_arrow: None,
             resolved: false,
         });
     }
@@ -879,6 +877,7 @@ fn highlight_ranges(
             let (start_line, len) = match side {
                 Side::Ours => fragment.ours,
                 Side::Theirs => fragment.theirs,
+                Side::Both => fragment.ours,
             };
             if len == 0 {
                 return None;
@@ -891,91 +890,6 @@ fn highlight_ranges(
             Some((start, end))
         })
         .collect()
-}
-
-fn insert_side_arrows(
-    editor: &Entity<Editor>,
-    fragments: &[Fragment],
-    offsets: &[usize],
-    side: Side,
-    view: WeakEntity<MergeView>,
-    cx: &mut App,
-) -> Vec<(usize, CustomBlockId)> {
-    editor.update(cx, |editor, cx| {
-        let snapshot = editor.buffer().read(cx).snapshot(cx);
-        let mut indices = Vec::new();
-        let blocks = fragments
-            .iter()
-            .enumerate()
-            .filter_map(|(index, fragment)| {
-                if fragment.kind == FragmentKind::Equal {
-                    return None;
-                }
-                let (start_line, len) = match side {
-                    Side::Ours => fragment.ours,
-                    Side::Theirs => fragment.theirs,
-                };
-                if len == 0 {
-                    return None;
-                }
-                let offset = offsets.get(start_line).copied()?;
-                indices.push(index);
-                let anchor = snapshot.anchor_before(MultiBufferOffset(offset));
-                let view = view.clone();
-                Some(BlockProperties {
-                    placement: BlockPlacement::Above(anchor),
-                    height: Some(1),
-                    style: BlockStyle::Sticky,
-                    render: Arc::new(move |cx: &mut BlockContext| {
-                        render_side_arrow(index, side, view.clone(), cx)
-                    }),
-                    priority: 0,
-                })
-            })
-            .collect::<Vec<_>>();
-        let ids = editor.insert_blocks(blocks, None, cx);
-        indices.into_iter().zip(ids).collect()
-    })
-}
-
-fn render_side_arrow(
-    index: usize,
-    side: Side,
-    view: WeakEntity<MergeView>,
-    cx: &mut BlockContext,
-) -> AnyElement {
-    let label = match side {
-        Side::Ours => "\u{00BB}",
-        _ => "\u{00AB}",
-    };
-    let mut row = h_flex()
-        .id(cx.block_id)
-        .occlude()
-        .h(cx.line_height)
-        .gap_1()
-        .bg(cx.theme().colors().editor_background);
-    if matches!(side, Side::Ours) {
-        row = row.w_full().justify_end().pr_1();
-    }
-    let view_revert = view.clone();
-    row.child(
-        Button::new(("side-revert", index), "\u{00D7}")
-            .label_size(LabelSize::Small)
-            .on_click(move |_, _window, cx| {
-                view_revert
-                    .update(cx, |view, cx| view.ignore_fragment(index, cx))
-                    .ok();
-            }),
-    )
-    .child(
-        Button::new(("side-arrow", index), label)
-            .label_size(LabelSize::Small)
-            .on_click(move |_, _window, cx| {
-                view.update(cx, |view, cx| view.accept_fragment(index, side, cx))
-                    .ok();
-            }),
-    )
-    .into_any_element()
 }
 
 fn highlight_changed_rows(

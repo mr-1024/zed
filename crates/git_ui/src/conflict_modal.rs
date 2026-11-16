@@ -92,7 +92,7 @@ impl ConflictResolutionModal {
                 .map(|sha| SharedString::from(sha.chars().take(7).collect::<String>()))
                 .unwrap_or_else(|| SharedString::from("theirs"));
             let header = SharedString::from(format!(
-                "Merge branch {} into {}",
+                "将分支 {} 合并到 {}",
                 theirs, ours
             ));
             (header, ours, theirs)
@@ -208,7 +208,7 @@ impl ConflictResolutionModal {
 
             anyhow::Ok(())
         })
-        .detach_and_prompt_err("Failed to accept side", window, cx, |error, _, _| {
+        .detach_and_prompt_err("接受失败", window, cx, |error, _, _| {
             Some(error.to_string())
         });
     }
@@ -315,7 +315,7 @@ impl Render for ConflictResolutionModal {
                     .w_full()
                     .gap_1p5()
                     .child(Icon::new(IconName::GitBranch).size(IconSize::XSmall))
-                    .child(Headline::new(format!("Conflicts ({count})")).size(HeadlineSize::XSmall)),
+                    .child(Headline::new(format!("冲突 ({count})")).size(HeadlineSize::XSmall)),
             )
             .child(
                 div()
@@ -332,20 +332,20 @@ impl Render for ConflictResolutionModal {
                     .border_y_1()
                     .border_color(border_variant)
                     .child(div().flex_1().child(
-                        Label::new("Name")
+                        Label::new("名称")
                             .size(LabelSize::Small)
                             .color(Color::Muted),
                     ))
                     .child(
                         div().w(px(140.)).child(
-                            Label::new(format!("Your changes ({})", self.ours_label))
+                            Label::new(format!("您的更改 ({})", self.ours_label))
                                 .size(LabelSize::Small)
                                 .color(Color::Muted),
                         ),
                     )
                     .child(
                         div().w(px(140.)).child(
-                            Label::new(format!("Their changes ({})", self.theirs_label))
+                            Label::new(format!("他人的更改 ({})", self.theirs_label))
                                 .size(LabelSize::Small)
                                 .color(Color::Muted),
                         ),
@@ -369,7 +369,7 @@ impl Render for ConflictResolutionModal {
                             .p_2()
                             .gap_2()
                             .child(
-                                Button::new("accept-ours", "Accept Yours")
+                                Button::new("accept-ours", "接受您的更改")
                                     .label_size(LabelSize::Small)
                                     .disabled(selected_repo_path.is_none())
                                     .on_click(cx.listener(|this, _, window, cx| {
@@ -377,7 +377,7 @@ impl Render for ConflictResolutionModal {
                                     })),
                             )
                             .child(
-                                Button::new("accept-theirs", "Accept Theirs")
+                                Button::new("accept-theirs", "接受他们的")
                                     .label_size(LabelSize::Small)
                                     .disabled(selected_repo_path.is_none())
                                     .on_click(cx.listener(|this, _, window, cx| {
@@ -385,7 +385,7 @@ impl Render for ConflictResolutionModal {
                                     })),
                             )
                             .child(
-                                Button::new("merge-file", "Merge...")
+                                Button::new("merge-file", "合并...")
                                     .label_size(LabelSize::Small)
                                     .disabled(merge_path.is_none())
                                     .on_click(cx.listener(move |this, _, window, cx| {
@@ -404,7 +404,7 @@ impl Render for ConflictResolutionModal {
                     .border_color(border_variant)
                     .child(div().flex_1())
                     .child(
-                        Button::new("close-conflicts", "Close")
+                        Button::new("close-conflicts", "关闭")
                             .label_size(LabelSize::Small)
                             .on_click(cx.listener(|_, _, _window, cx| {
                                 cx.emit(DismissEvent);
@@ -416,8 +416,8 @@ impl Render for ConflictResolutionModal {
 
 fn status_label(code: UnmergedStatusCode) -> &'static str {
     match code {
-        UnmergedStatusCode::Updated => "Modified",
-        UnmergedStatusCode::Deleted => "Deleted",
-        UnmergedStatusCode::Added => "Added",
+        UnmergedStatusCode::Updated => "已修改",
+        UnmergedStatusCode::Deleted => "已删除",
+        UnmergedStatusCode::Added => "已新增",
     }
 }

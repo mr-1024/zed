@@ -31,14 +31,14 @@ fn abort_merge(workspace: &mut Workspace, window: &mut Window, cx: &mut Context<
         workspace
             .update_in(cx, |workspace, _window, cx| {
                 workspace.toggle_status_toast(
-                    StatusToast::new("Merge aborted", cx, |this, _| this),
+                    StatusToast::new("已中止合并", cx, |this, _| this),
                     cx,
                 );
             })
             .log_err();
         anyhow::Ok(())
     })
-    .detach_and_prompt_err("Failed to abort merge", window, cx, |error, _, _| {
+    .detach_and_prompt_err("中止合并失败", window, cx, |error, _, _| {
         Some(error.to_string())
     });
 }
@@ -97,9 +97,9 @@ fn smart_merge_file(
         workspace
             .update_in(cx, |workspace, window, cx| {
                 let message = if has_conflicts {
-                    "Smart merge applied with remaining conflicts"
+                    "智能合并完成，仍有冲突待处理"
                 } else {
-                    "Smart merge applied - all changes merged"
+                    "智能合并完成，全部更改已合并"
                 };
                 workspace.toggle_status_toast(StatusToast::new(message, cx, |this, _| this), cx);
                 let _ = window;
@@ -108,7 +108,7 @@ fn smart_merge_file(
 
         anyhow::Ok(())
     })
-    .detach_and_prompt_err("Smart merge failed", window, cx, |error, _, _| {
+    .detach_and_prompt_err("智能合并失败", window, cx, |error, _, _| {
         Some(error.to_string())
     });
 }

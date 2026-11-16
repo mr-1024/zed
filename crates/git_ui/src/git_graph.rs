@@ -2840,9 +2840,9 @@ impl GitGraph {
     ) {
         let is_path_history = matches!(self.log_source, LogSource::Path(_));
         let columns: &[&str] = if is_path_history {
-            &["Description", "Date", "Author", "Commit"]
+            &["Description", "Date", "Author", "提交"]
         } else {
-            &["Refs", "Graph", "Description", "Date", "Author", "Commit"]
+            &["Refs", "图谱", "Description", "Date", "Author", "提交"]
         };
 
         let filter = self.column_visibility.clone();
@@ -4477,7 +4477,7 @@ impl Render for GitGraph {
                                                     .color(Color::Muted)
                                                     .truncate()
                                                     .into_any_element(),
-                                                Label::new("Graph")
+                                                Label::new("图谱")
                                                     .color(Color::Muted)
                                                     .truncate()
                                                     .into_any_element(),
@@ -4490,7 +4490,7 @@ impl Render for GitGraph {
                                                 Label::new("Author")
                                                     .color(Color::Muted)
                                                     .into_any_element(),
-                                                Label::new("Commit")
+                                                Label::new("提交")
                                                     .color(Color::Muted)
                                                     .into_any_element(),
                                             ],
@@ -4508,7 +4508,7 @@ impl Render for GitGraph {
                                                 Label::new("Author")
                                                     .color(Color::Muted)
                                                     .into_any_element(),
-                                                Label::new("Commit")
+                                                Label::new("提交")
                                                     .color(Color::Muted)
                                                     .into_any_element(),
                                             ],

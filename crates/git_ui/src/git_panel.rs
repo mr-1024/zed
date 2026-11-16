@@ -225,7 +225,7 @@ enum StashKind {
 impl StashKind {
     fn title(self) -> &'static str {
         match self {
-            StashKind::All => "Stash All",
+            StashKind::All => "全部储藏",
             StashKind::Tracked => "Stash Tracked",
             StashKind::Staged => "Stash Staged",
         }
@@ -364,8 +364,8 @@ fn git_panel_context_menu(
     ContextMenu::build(window, cx, |context_menu, _, _| {
         context_menu
             .context(focus_handle.clone())
-            .action_disabled_when(!has_unstaged_changes, "Stage All", StageAll.boxed_clone())
-            .action_disabled_when(!has_staged_changes, "Unstage All", UnstageAll.boxed_clone())
+            .action_disabled_when(!has_unstaged_changes, "全部暂存", StageAll.boxed_clone())
+            .action_disabled_when(!has_staged_changes, "全部取消暂存", UnstageAll.boxed_clone())
             .action_disabled_when(
                 !has_staged_tracked_changes,
                 "Restore All Changes",
@@ -374,7 +374,7 @@ fn git_panel_context_menu(
             .separator()
             .action_disabled_when(
                 !(has_new_changes || has_tracked_changes),
-                "Stash All",
+                "全部储藏",
                 StashAll.boxed_clone(),
             )
             // Offer the stash variant that matches how the list is currently grouped,
@@ -740,7 +740,7 @@ impl DiscardTarget {
 /// What clicking a staging control should do.
 ///
 /// In the "staged & unstaged" grouping, a partially staged file appears in both the
-/// "Staged" and "Unstaged" sections at once, so a row's meaning comes from
+/// "已暂存" and "Unstaged" sections at once, so a row's meaning comes from
 /// the section it is rendered in rather than from the file's own state.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum StageIntent {
@@ -781,9 +781,9 @@ impl StageIntent {
 
     fn label(self, stage_status: impl FnOnce() -> StageStatus) -> &'static str {
         if self.resolve_with(stage_status) {
-            "Stage"
+            "暂存"
         } else {
-            "Unstage"
+            "取消暂存"
         }
     }
 }
@@ -807,7 +807,7 @@ impl GitHeaderEntry {
             Section::New => status.is_created(),
             // Conflicted files render only under the Conflict section, so the
             // Staged/Unstaged bulk operations must not sweep them up: "Unstage
-            // All" would silently un-resolve conflicts, and "Stage All" would
+            // All" would silently un-resolve conflicts, and "全部暂存" would
             // silently mark them resolved.
             Section::Staged => {
                 !repo.had_conflict_on_last_merge_head_change(&status_entry.repo_path)
@@ -822,10 +822,10 @@ impl GitHeaderEntry {
     }
     pub fn title(&self) -> &'static str {
         match self.header {
-            Section::Conflict => "Conflicts",
-            Section::Tracked => "Tracked",
-            Section::New => "Untracked",
-            Section::Staged => "Staged",
+            Section::Conflict => "冲突",
+            Section::Tracked => "已跟踪",
+            Section::New => "未跟踪",
+            Section::Staged => "已暂存",
             Section::Unstaged => "Unstaged",
             Section::Branch => "Branch Changes",
         }
@@ -1126,7 +1126,7 @@ struct GitTreeStatusEntry {
 }
 
 /// Identifies a row by section and path. A partially staged file has a row in
-/// both the "Staged" and "Unstaged" sections, so marks are keyed by both.
+/// both the "已暂存" and "Unstaged" sections, so marks are keyed by both.
 #[derive(Debug, PartialEq, Eq, Clone, Hash)]
 struct TreeKey {
     section: Section,
@@ -1255,13 +1255,13 @@ impl EntryMenuTitles {
             } else {
                 "Copy Relative Path"
             },
-            open_diff: if plural { "Open Diffs" } else { "Open Diff" },
+            open_diff: if plural { "Open Diffs" } else { "打开差异" },
             open_file_diff: if plural {
                 "Open File Diffs"
             } else {
                 "Open File Diff"
             },
-            view_file: if plural { "View Files" } else { "View File" },
+            view_file: if plural { "View Files" } else { "查看文件" },
             view_file_history: if plural {
                 "View File Histories"
             } else {
@@ -2050,7 +2050,7 @@ impl GitPanel {
 
         // Using `unique_by` allows us to deduplicate entries by `RepoPath`
         // ensuring that if a file is partially staged, meaning it shows up on
-        // both "Staged" and "Unstaged" sections, we still report it as a single
+        // both "已暂存" and "Unstaged" sections, we still report it as a single
         // entry and not two different ones.
         self.marked_file_entries()
             .into_iter()
@@ -3090,7 +3090,7 @@ impl GitPanel {
 
     /// The files a discard acts on, mirroring `effective_status_entries`.
     ///
-    /// A partially staged file has a row in both the "Staged" and "Unstaged"
+    /// A partially staged file has a row in both the "已暂存" and "Unstaged"
     /// sections; discarding through its "Unstaged" row keeps the staged half.
     fn discard_targets(&self) -> Vec<DiscardTarget> {
         let section_scope = |section: Option<Section>| {
@@ -3322,7 +3322,7 @@ impl GitPanel {
                 } else {
                     (
                         format!("Are you sure you want to discard {changes} to "),
-                        "Discard Changes",
+                        "放弃更改",
                     )
                 };
 
@@ -3347,7 +3347,7 @@ impl GitPanel {
                     (0, 0) => return Some(()),
                     (tracked_count, 0) => (
                         format!("Discard {changes} to {tracked_count} files?"),
-                        "Discard",
+                        "放弃",
                     ),
                     (0, untracked_count) => (format!("Trash {untracked_count} files?"), "Trash"),
                     (tracked_count, untracked_count) => (
@@ -4334,7 +4334,7 @@ impl GitPanel {
                 .collect::<Vec<_>>();
 
             if changed_files.is_empty() && !options.amend {
-                error_spawn("No changes to commit", window, cx);
+                error_spawn("没有可提交的更改", window, cx);
                 return;
             }
 
@@ -6834,7 +6834,7 @@ impl GitPanel {
                             .icon_color(Color::Error)
                             .icon_size(IconSize::Small)
                             .style(ButtonStyle::Tinted(TintColor::Error))
-                            .tooltip(Tooltip::text("Cancel Commit Message Generation"))
+                            .tooltip(Tooltip::text("取消生成提交信息"))
                             .on_click(cx.listener(|this, _event, _window, cx| {
                                 this.generate_commit_message_task.take();
                                 cx.notify();
@@ -6879,7 +6879,7 @@ impl GitPanel {
                     Tooltip::simple("No Changes to Commit", cx)
                 } else {
                     Tooltip::for_action_in(
-                        "Generate Commit Message",
+                        "生成提交信息",
                         &git::GenerateCommitMessage,
                         &editor_focus_handle,
                         cx,
@@ -6964,7 +6964,7 @@ impl GitPanel {
                             })
                             .when(has_previous_commit, |this| {
                                 this.toggleable_entry(
-                                    "Amend",
+                                    "修补提交",
                                     amend,
                                     IconPosition::Start,
                                     Some(Box::new(Amend)),
@@ -7018,7 +7018,7 @@ impl GitPanel {
         } else if self.has_unstaged_conflicts() {
             (false, "You must resolve conflicts before committing")
         } else if !self.has_staged_changes() && !self.has_tracked_changes() && !self.amend_pending {
-            (false, "No changes to commit")
+            (false, "没有可提交的更改")
         } else if self.pending_commit.is_some() {
             (false, "Commit in progress")
         } else if !self.has_commit_message(cx) {
@@ -7033,14 +7033,14 @@ impl GitPanel {
     pub fn commit_button_title(&self) -> &'static str {
         if self.amend_pending {
             if self.has_staged_changes() {
-                "Amend"
+                "修补提交"
             } else if self.has_tracked_changes() {
                 "Amend Tracked"
             } else {
-                "Amend"
+                "修补提交"
             }
         } else if self.has_staged_changes() {
-            "Commit"
+            "提交"
         } else {
             "Commit Tracked"
         }
@@ -7152,9 +7152,9 @@ impl GitPanel {
 
     fn render_git_changes_actions_button(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let (text, action, stage, tooltip) = if self.primary_changes_action_stages() {
-            ("Stage All", StageAll.boxed_clone(), true, "git add --all")
+            ("全部暂存", StageAll.boxed_clone(), true, "git add --all")
         } else {
-            ("Unstage All", UnstageAll.boxed_clone(), false, "git reset")
+            ("全部取消暂存", UnstageAll.boxed_clone(), false, "git reset")
         };
 
         SplitButton::new(
@@ -7226,7 +7226,7 @@ impl GitPanel {
                                                 .color(Color::Muted),
                                         )
                                         .child(
-                                            Label::new("View Diff")
+                                            Label::new("查看差异")
                                                 .size(LabelSize::Small)
                                                 .color(Color::Muted),
                                         )
@@ -7243,7 +7243,7 @@ impl GitPanel {
                                         Tooltip::simple("View Branch Diff", cx)
                                     } else {
                                         Tooltip::for_action_in(
-                                            "View Diff",
+                                            "查看差异",
                                             &Diff,
                                             &focus_handle,
                                             cx,
@@ -7363,7 +7363,7 @@ impl GitPanel {
                 let (icon, label) = if self.commit_editor_expanded {
                     (IconName::Minimize, "Collapse Commit Editor")
                 } else {
-                    (IconName::Maximize, "Expand Commit Editor")
+                    (IconName::Maximize, "展开提交编辑器")
                 };
                 let focus_handle = self.focus_handle.clone();
 
@@ -7771,7 +7771,7 @@ impl GitPanel {
                 ElementId::Name("changes-tab".into()),
                 active_tab == GitPanelTab::Changes,
                 true,
-                "Changes".into(),
+                "更改".into(),
                 GitPanelTab::Changes,
                 ActivateChangesTab.boxed_clone(),
             ))
@@ -7784,7 +7784,7 @@ impl GitPanel {
                 ElementId::Name("history-tab".into()),
                 active_tab != GitPanelTab::Changes,
                 false,
-                "History".into(),
+                "历史".into(),
                 GitPanelTab::History,
                 ActivateHistoryTab.boxed_clone(),
             ))
@@ -8444,7 +8444,7 @@ impl GitPanel {
         v_flex()
             .gap_1()
             .items_center()
-            .child(Label::new("No changes to commit").color(Color::Muted))
+            .child(Label::new("没有可提交的更改").color(Color::Muted))
             .when(show_branch_diff, |this| {
                 this.child(
                     Button::new("view_branch_diff", "View Branch Diff")
@@ -8868,8 +8868,8 @@ impl GitPanel {
                     Some("All conflicts marked as resolved")
                 } else {
                     match stage_intent {
-                        StageIntent::Stage => Some("Stage All"),
-                        StageIntent::Unstage => Some("Unstage All"),
+                        StageIntent::Stage => Some("全部暂存"),
+                        StageIntent::Unstage => Some("全部取消暂存"),
                         StageIntent::Toggle => None,
                     }
                 };
@@ -8944,18 +8944,18 @@ impl GitPanel {
         let stage_title = match (target_kind, will_unstage) {
             (SelectionTargetKind::Directory, true) => "Unstage Folder",
             (SelectionTargetKind::Directory, false) => "Stage Folder",
-            (SelectionTargetKind::File, true) => "Unstage File",
-            (SelectionTargetKind::File, false) => "Stage File",
+            (SelectionTargetKind::File, true) => "取消暂存文件",
+            (SelectionTargetKind::File, false) => "暂存文件",
             (SelectionTargetKind::Multiple, true) => &format!("Unstage {file_count} {file_label}"),
             (SelectionTargetKind::Multiple, false) => &format!("Stage {file_count} {file_label}"),
         };
 
         let restore_title = match (target_kind, all_trashed, all_deleted) {
             (SelectionTargetKind::Directory, true, _) => "Trash Folder",
-            (SelectionTargetKind::Directory, false, _) => "Discard Changes",
+            (SelectionTargetKind::Directory, false, _) => "放弃更改",
             (SelectionTargetKind::File, true, _) => "Trash File",
             (SelectionTargetKind::File, _, true) => "Restore File",
-            (SelectionTargetKind::File, _, _) => "Discard Changes",
+            (SelectionTargetKind::File, _, _) => "放弃更改",
             (SelectionTargetKind::Multiple, true, _) => &format!("Trash {file_count} {file_label}"),
             (SelectionTargetKind::Multiple, _, true) => {
                 &format!("Restore {file_count} {file_label}")
@@ -9183,13 +9183,13 @@ impl GitPanel {
                 .items_center()
                 .border_b_1()
                 .border_color(colors.border_variant)
-                .child(Label::new(format!("Merging {branch}")).size(LabelSize::Small))
+                .child(Label::new(format!("正在合并 {branch}")).size(LabelSize::Small))
                 .child(div().flex_1())
                 .when(conflicts > 0, |this| {
                     this.child(
                         IconButton::new("top-resolve-conflicts", IconName::Check)
                             .icon_size(IconSize::Small)
-                            .tooltip(Tooltip::text("Resolve Conflicts"))
+                            .tooltip(Tooltip::text("解决冲突"))
                             .on_click(cx.listener(|_, _, window, cx| {
                                 window.dispatch_action(Box::new(ResolveConflicts), cx);
                             })),
@@ -9198,7 +9198,7 @@ impl GitPanel {
                 .child(
                     IconButton::new("top-abort-merge", IconName::Close)
                         .icon_size(IconSize::Small)
-                        .tooltip(Tooltip::text("Abort Merge"))
+                        .tooltip(Tooltip::text("中止合并"))
                         .on_click(cx.listener(|_, _, window, cx| {
                             window.dispatch_action(Box::new(AbortMerge), cx);
                         })),
@@ -12688,7 +12688,7 @@ mod tests {
             StageStatus::Staged
         );
 
-        // "Unstage All" on the Staged header must skip resolved conflicts while
+        // "全部取消暂存" on the Staged header must skip resolved conflicts while
         // still unstaging regular staged files.
         panel.update_in(&mut cx, |panel, window, cx| {
             panel.toggle_staged_for_entry(
@@ -12820,7 +12820,7 @@ mod tests {
         init_test(cx);
 
         // Enable both the Git Panel's Tree View as well as grouping the entries
-        // by staging status, so we end up with both "Staged" and "Unstaged"
+        // by staging status, so we end up with both "已暂存" and "Unstaged"
         // sections.
         cx.update(|cx| {
             SettingsStore::update_global(cx, |store, cx| {
@@ -12846,7 +12846,7 @@ mod tests {
         .await;
 
         // Set up `src/partial.rs` to be partially staged (shows up on both
-        // "Staged" and "Unstaged" sections) while `src/staged.rs` to be
+        // "已暂存" and "Unstaged" sections) while `src/staged.rs` to be
         // staged.
         fs.set_status_for_repo(
             path!("/project/.git").as_ref(),
@@ -12876,7 +12876,7 @@ mod tests {
             // setting `src/staged.rs` as the `selected_entry`, simulating the
             // context menu being deployed by right-clicking on `src/partial.rs`.
             //
-            // Since the context menu will be deployed from the "Staged"
+            // Since the context menu will be deployed from the "已暂存"
             // section, we expect the menu to offer the ability to unstage the
             // files.
             let partial_path = repo_path("src/partial.rs");
@@ -15404,7 +15404,7 @@ mod tests {
 
             let context_menu = ContextMenu::build(window, cx, |menu, _, _| {
                 menu.context(panel.focus_handle.clone())
-                    .action("Stage All", StageAll.boxed_clone())
+                    .action("全部暂存", StageAll.boxed_clone())
             });
 
             panel.set_context_menu(
@@ -16608,7 +16608,7 @@ mod tests {
             );
         }
 
-        // Discarding from the "Staged" section restores HEAD.
+        // Discarding from the "已暂存" section restores HEAD.
         discard_row(&panel, "partial.txt", Section::Staged, &mut cx);
         await_git_panel_entries(&panel, &mut cx).await;
         assert_eq!(

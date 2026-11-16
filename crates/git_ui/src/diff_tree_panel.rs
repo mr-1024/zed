@@ -214,7 +214,7 @@ impl Render for DiffTreePanel {
                     .py_1()
                     .border_b_1()
                     .border_color(colors.border_variant)
-                    .child(Label::new("Changed Files").size(LabelSize::Small)),
+                    .child(Label::new("变更文件").size(LabelSize::Small)),
             )
             .child(
                 div()
@@ -226,7 +226,7 @@ impl Render for DiffTreePanel {
                     .py_1()
                     .when(entries.is_empty(), |this| {
                         this.child(
-                            Label::new("Open a branch comparison to see changed files")
+                            Label::new("打开一次分支对比以查看变更文件")
                                 .size(LabelSize::Small)
                                 .color(Color::Muted),
                         )
@@ -265,7 +265,7 @@ impl Panel for DiffTreePanel {
     }
 
     fn icon_tooltip(&self, _window: &Window, _cx: &App) -> Option<&'static str> {
-        Some("Changed Files")
+        Some("变更文件")
     }
 
     fn toggle_action(&self) -> Box<dyn Action> {

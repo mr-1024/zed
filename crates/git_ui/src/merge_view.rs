@@ -95,14 +95,14 @@ impl MergeView {
                 .branch
                 .as_ref()
                 .map(|branch| SharedString::from(branch.name().to_string()))
-                .unwrap_or_else(|| SharedString::from("Ours"));
+                .unwrap_or_else(|| SharedString::from("本地"));
             let right: SharedString = snapshot
                 .merge
                 .merge_heads_by_conflicted_path
                 .get(&repo_path)
                 .and_then(|heads| heads.iter().find_map(|head| head.clone()))
                 .map(|sha| SharedString::from(sha.chars().take(7).collect::<String>()))
-                .unwrap_or_else(|| SharedString::from("Theirs"));
+                .unwrap_or_else(|| SharedString::from("远端"));
             (left, right)
         };
 
@@ -478,7 +478,7 @@ impl Item for MergeView {
     type Event = ItemEvent;
 
     fn tab_content_text(&self, _detail: usize, _cx: &App) -> SharedString {
-        format!("Merge {}", self.file_name).into()
+        format!("合并 {}", self.file_name).into()
     }
 
     fn telemetry_event_text(&self) -> Option<&'static str> {
@@ -520,10 +520,10 @@ impl Render for MergeView {
                     .border_b_1()
                     .border_color(colors.border_variant)
                     .child(
-                        Label::new(format!("Merge: {}", self.file_name)).size(LabelSize::Small),
+                        Label::new(format!("合并: {}", self.file_name)).size(LabelSize::Small),
                     )
                     .child(
-                        Label::new(format!("{changes} change(s), {unresolved} conflict(s)"))
+                        Label::new(format!("{changes} 处更改，{unresolved} 处冲突"))
                             .size(LabelSize::Small)
                             .color(Color::Muted),
                     )
@@ -534,7 +534,7 @@ impl Render for MergeView {
                             .child(
                                 IconButton::new("prev-change", IconName::ArrowUp)
                                     .icon_size(IconSize::Small)
-                                    .tooltip(Tooltip::text("Previous Change"))
+                                    .tooltip(Tooltip::text("上一处更改"))
                                     .on_click(cx.listener(|this, _, window, cx| {
                                         this.navigate_change(false, window, cx);
                                     })),
@@ -542,7 +542,7 @@ impl Render for MergeView {
                             .child(
                                 IconButton::new("next-change", IconName::ArrowDown)
                                     .icon_size(IconSize::Small)
-                                    .tooltip(Tooltip::text("Next Change"))
+                                    .tooltip(Tooltip::text("下一处更改"))
                                     .on_click(cx.listener(|this, _, window, cx| {
                                         this.navigate_change(true, window, cx);
                                     })),
@@ -569,21 +569,21 @@ impl Render for MergeView {
                         h_flex()
                             .gap_2()
                             .child(
-                                Button::new("header-accept-left", "Accept Left")
+                                Button::new("header-accept-left", "接受左侧")
                                     .label_size(LabelSize::Small)
                                     .on_click(cx.listener(|this, _, _window, cx| {
                                         this.accept_side(true, cx);
                                     })),
                             )
                             .child(
-                                Button::new("header-accept-both", "Accept Both")
+                                Button::new("header-accept-both", "接受双方")
                                     .label_size(LabelSize::Small)
                                     .on_click(cx.listener(|this, _, _window, cx| {
                                         this.accept_both(cx);
                                     })),
                             )
                             .child(
-                                Button::new("header-accept-right", "Accept Right")
+                                Button::new("header-accept-right", "接受右侧")
                                     .label_size(LabelSize::Small)
                                     .on_click(cx.listener(|this, _, _window, cx| {
                                         this.accept_side(false, cx);
@@ -592,7 +592,7 @@ impl Render for MergeView {
                     )
                     .child(div().flex_1())
                     .child(
-                        Button::new("toggle-base", "Base")
+                        Button::new("toggle-base", "基线")
                             .label_size(LabelSize::Small)
                             .toggle_state(self.show_base)
                             .on_click(cx.listener(|this, _, _window, cx| {
@@ -606,17 +606,17 @@ impl Render for MergeView {
                     .flex_1()
                     .min_h_0()
                     .child(self.pane(
-                        "Ours",
+                        "本地",
                         Some(self.left_label.clone()),
                         self.ours_editor.clone(),
                         cx,
                     ))
                     .when(self.show_base, |this| {
-                        this.child(self.pane("Base", None, self.base_editor.clone(), cx))
+                        this.child(self.pane("基线", None, self.base_editor.clone(), cx))
                     })
-                    .child(self.pane("Result", None, self.result_editor.clone(), cx))
+                    .child(self.pane("结果", None, self.result_editor.clone(), cx))
                     .child(self.pane(
-                        "Theirs",
+                        "远端",
                         Some(self.right_label.clone()),
                         self.theirs_editor.clone(),
                         cx,
@@ -632,7 +632,7 @@ impl Render for MergeView {
                     .border_color(colors.border_variant)
                     .child(div().flex_1())
                     .child(
-                        Button::new("cancel-merge", "Cancel")
+                        Button::new("cancel-merge", "取消")
                             .label_size(LabelSize::Small)
                             .on_click(cx.listener(|_, _, window, cx| {
                                 window.dispatch_action(Box::new(ResolveConflicts), cx);
@@ -640,7 +640,7 @@ impl Render for MergeView {
                             })),
                     )
                     .child(
-                        Button::new("apply-merge", "Apply")
+                        Button::new("apply-merge", "应用")
                             .label_size(LabelSize::Small)
                             .on_click(cx.listener(|this, _, window, cx| {
                                 this.apply(window, cx);

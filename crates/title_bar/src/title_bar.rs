@@ -50,6 +50,7 @@ use ui::{
     Avatar, ButtonLike, ContextMenu, ContextMenuEntry, IconWithIndicator, Indicator, PopoverMenu,
     PopoverMenuHandle, TintColor, Tooltip, prelude::*, utils::platform_title_bar_height,
 };
+use git::{AbortMerge, ResolveConflicts};
 use update_version::UpdateVersion;
 use util::ResultExt;
 use workspace::{
@@ -958,7 +959,7 @@ impl TitleBar {
         };
 
         let settings = TitleBarSettings::get_global(cx);
-        let effective_repository = Some(repository);
+        let effective_repository = Some(repository.clone());
 
         let worktree_label: SharedString = linked_worktree_name.unwrap_or_else(|| "main".into());
 
@@ -1082,6 +1083,56 @@ impl TitleBar {
 
         let show_separator = worktree_button.is_some() && branch_picker.is_some();
 
+        let merge_banner = {
+            let repo = repository.read(cx);
+            let conflicts = repo
+                .cached_status()
+                .filter(|entry| entry.status.is_conflicted())
+                .count();
+            let merging = repo.snapshot().merge.message.is_some() || conflicts > 0;
+            if merging {
+                Some(
+                    h_flex()
+                        .ml_2()
+                        .gap_1()
+                        .items_center()
+                        .child(
+                            Icon::new(IconName::Warning)
+                                .size(IconSize::Small)
+                                .color(Color::Warning),
+                        )
+                        .child(
+                            Label::new("正在合并")
+                                .size(LabelSize::Small)
+                                .color(Color::Default),
+                        )
+                        .when(conflicts > 0, |this| {
+                            this.child(
+                                Button::new("title-bar-merge-resolve", "\u{00BB}")
+                                    .label_size(LabelSize::Small)
+                                    .style(ButtonStyle::Tinted(TintColor::Success))
+                                    .tooltip(Tooltip::text("解决冲突"))
+                                    .on_click(|_, window, cx| {
+                                        window.dispatch_action(Box::new(ResolveConflicts), cx);
+                                    }),
+                            )
+                        })
+                        .child(
+                            Button::new("title-bar-merge-abort", "\u{2715}")
+                                .label_size(LabelSize::Small)
+                                .style(ButtonStyle::Tinted(TintColor::Error))
+                                .tooltip(Tooltip::text("中止合并"))
+                                .on_click(|_, window, cx| {
+                                    window.dispatch_action(Box::new(AbortMerge), cx);
+                                }),
+                        )
+                        .into_any_element(),
+                )
+            } else {
+                None
+            }
+        };
+
         Some(
             h_flex()
                 .gap_px()
@@ -1095,30 +1146,7 @@ impl TitleBar {
                     )
                 })
                 .children(branch_picker)
-                .map(|this| {
-                    let summary = self.project.read(cx).diagnostic_summary(false, cx);
-                    if summary.error_count == 0 && summary.warning_count == 0 {
-                        return this;
-                    }
-                    this.child(
-                        h_flex()
-                            .gap_1()
-                            .when(summary.error_count > 0, |this| {
-                                this.child(
-                                    Label::new(format!("\u{2715} {}", summary.error_count))
-                                        .size(LabelSize::XSmall)
-                                        .color(Color::Error),
-                                )
-                            })
-                            .when(summary.warning_count > 0, |this| {
-                                this.child(
-                                    Label::new(format!("! {}", summary.warning_count))
-                                        .size(LabelSize::XSmall)
-                                        .color(Color::Warning),
-                                )
-                            }),
-                    )
-                })
+                .children(merge_banner)
                 .into_any_element(),
         )
     }

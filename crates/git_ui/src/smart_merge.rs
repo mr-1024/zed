@@ -1,5 +1,5 @@
 use anyhow::Context as _;
-use git::{AbortMerge, SmartMergeFile, repository::RepoPath};
+use git::{AbortMerge, MergeResultApplied, SmartMergeFile, repository::RepoPath};
 use gpui::{AppContext as _, Context, Window};
 use notifications::status_toast::StatusToast;
 use util::ResultExt as _;
@@ -16,6 +16,14 @@ pub(crate) fn register(workspace: &mut Workspace, cx: &mut Context<Workspace>) {
     );
     workspace.register_action(|workspace, _: &AbortMerge, window, cx| {
         abort_merge(workspace, window, cx);
+    });
+    workspace.register_action(|workspace, action: &MergeResultApplied, _window, cx| {
+        let message = if action.all_resolved {
+            "所有更改均已处理，保存更改并完成合并"
+        } else {
+            "更改已保存，仍有未处理的冲突"
+        };
+        workspace.toggle_status_toast(StatusToast::new(message, cx, |this, _| this), cx);
     });
 }
 

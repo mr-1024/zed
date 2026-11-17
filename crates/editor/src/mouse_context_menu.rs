@@ -243,6 +243,21 @@ pub fn deploy_context_menu(
                     .is_some_and(|ext| ext.eq_ignore_ascii_case("svg"))
             });
 
+        let proto_abs_path = editor
+            .buffer()
+            .read(cx)
+            .as_singleton()
+            .and_then(|buffer| {
+                let buffer = buffer.read(cx);
+                let file = buffer.file()?;
+                file.as_local().map(|file| file.abs_path(cx))
+            })
+            .filter(|path| {
+                path.extension()
+                    .is_some_and(|ext| ext.eq_ignore_ascii_case("proto"))
+            })
+            .map(|path| path.to_string_lossy().to_string());
+
         ui::ContextMenu::build(window, cx, |menu, _window, _cx| {
             let builder = menu
                 .on_blur_subscription(Subscription::new(|| {}))
@@ -321,6 +336,17 @@ pub fn deploy_context_menu(
                     "复制行永久链接",
                     Box::new(CopyPermalinkToLine),
                 )
+                .when_some(proto_abs_path.clone(), |builder, path| {
+                    let path = std::sync::Arc::new(path);
+                    builder.submenu("Go Zero", move |menu, _window, _cx| {
+                        menu.action(
+                            "ZRPC 快捷生成",
+                            Box::new(git::GenerateGoZeroZrpc {
+                                path: path.as_ref().clone(),
+                            }),
+                        )
+                    })
+                })
                 .when(has_git_repo, |builder| {
                     let compare_repo_path = compare_repo_path.clone();
                     builder.submenu("Git", move |menu, _window, _cx| {

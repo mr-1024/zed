@@ -1196,6 +1196,28 @@ impl ProjectPanel {
                     .map(|(_, repo_path)| repo_path.to_string())
             };
 
+            let zrpc_proto_path = {
+                let is_proto = !is_dir
+                    && entry
+                        .path
+                        .as_std_path()
+                        .extension()
+                        .is_some_and(|ext| ext.eq_ignore_ascii_case("proto"));
+                if is_proto && is_local {
+                    project
+                        .absolute_path(
+                            &project::ProjectPath {
+                                worktree_id,
+                                path: entry.path.clone(),
+                            },
+                            cx,
+                        )
+                        .map(|path| path.to_string_lossy().to_string())
+                } else {
+                    None
+                }
+            };
+
             let has_pasteable_content = self.has_pasteable_content(cx);
             let context_menu = ContextMenu::build(window, cx, |menu, _, _| {
                 menu.context(self.focus_handle.clone()).map(|menu| {
@@ -1238,6 +1260,17 @@ impl ProjectPanel {
                             })
                             .when(is_foldable, |menu| {
                                 menu.action("Fold Directory", Box::new(FoldDirectory))
+                            })
+                            .when_some(zrpc_proto_path.clone(), |menu, path| {
+                                let path = std::sync::Arc::new(path);
+                                menu.submenu("Go Zero", move |menu, _, _| {
+                                    menu.action(
+                                        "ZRPC 快捷生成",
+                                        Box::new(git::GenerateGoZeroZrpc {
+                                            path: path.as_ref().clone(),
+                                        }),
+                                    )
+                                })
                             })
                             .when(should_show_compare, |menu| {
                                 menu.separator()

@@ -40,6 +40,7 @@ pub mod branch_diff;
 pub mod branch_picker;
 mod commit_context_menu;
 mod conflict_modal;
+mod gozero;
 mod diff_tree_panel;
 mod commit_modal;
 pub mod commit_tooltip;
@@ -118,6 +119,7 @@ pub fn init(cx: &mut App) {
         unstaged_diff::UnstagedDiff::register(workspace, cx);
         branch_diff::BranchDiff::register(workspace, cx);
         smart_merge::register(workspace, cx);
+        gozero::register(workspace, cx);
         merge_view::MergeView::register(workspace, cx);
         conflict_modal::ConflictResolutionModal::register(workspace, cx);
 

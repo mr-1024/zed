@@ -207,6 +207,23 @@ pub struct AbortMerge;
 #[action(namespace = git)]
 pub struct ResolveConflicts;
 
+/// Generates go-zero zRPC code for the given proto file with `goctl`.
+#[derive(Clone, Debug, Default, PartialEq, Deserialize, JsonSchema, Action)]
+#[action(namespace = git)]
+#[serde(deny_unknown_fields)]
+pub struct GenerateGoZeroZrpc {
+    /// Absolute path to the proto file.
+    pub path: String,
+}
+
+/// Emitted after the merge editor applies its result, so the workspace can
+/// report that the merge is complete.
+#[derive(Clone, Debug, Default, PartialEq, Deserialize, JsonSchema, Action)]
+#[action(namespace = git)]
+pub struct MergeResultApplied {
+    pub all_resolved: bool,
+}
+
 /// Opens a three-pane merge editor for the given conflicted file.
 #[derive(Clone, Debug, Default, PartialEq, Deserialize, JsonSchema, Action)]
 #[action(namespace = git)]

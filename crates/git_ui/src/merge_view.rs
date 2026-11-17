@@ -392,13 +392,15 @@ impl MergeView {
     }
 
     fn accept_both(&mut self, cx: &mut Context<Self>) {
-        for index in 0..self.fragments.len() {
-            if self.fragments[index].kind == FragmentKind::Conflict
-                && !self.fragments[index].resolved
-            {
-                self.accept_fragment(index, Side::Both, cx);
-            }
-        }
+        // GoLand semantics: apply both sides' non-conflicting changes; true
+        // conflicts stay blank and must be resolved manually.
+        let text = self.initial_result_text.clone();
+        self.result_buffer.update(cx, |buffer, cx| {
+            let len = buffer.len();
+            buffer.edit([(0..len, text)], None, cx);
+        });
+        self.fragments = self.initial_fragments.clone();
+        self.current = None;
         cx.notify();
     }
 

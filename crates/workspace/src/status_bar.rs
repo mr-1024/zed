@@ -56,6 +56,12 @@ pub trait StatusItemView: Render {
     /// that the status bar can show a "Hide Button" entry in its
     /// right-click menu.
     fn hide_setting(&self, cx: &App) -> Option<HideStatusItem>;
+
+    /// Text-only items (cursor position, indentation, file name, …) are hidden
+    /// when the status bar is rendered as a narrow vertical activity bar.
+    fn hidden_in_vertical_bar(&self) -> bool {
+        false
+    }
 }
 
 trait StatusItemViewHandle: Send {
@@ -68,6 +74,7 @@ trait StatusItemViewHandle: Send {
     );
     fn item_type(&self) -> TypeId;
     fn hide_setting(&self, cx: &App) -> Option<HideStatusItem>;
+    fn hidden_in_vertical_bar(&self, cx: &App) -> bool;
 }
 
 #[derive(Default)]
@@ -152,7 +159,7 @@ impl Render for StatusBar {
             )
             .w_full()
             .when(vertical, |el| {
-                el.flex_col().items_center().gap_1().px_1().py_2()
+                el.flex_col().items_center().gap_1().px_1().pt_1().pb_2()
             })
             .when(!vertical, |el| {
                 el.items_center()
@@ -210,8 +217,16 @@ impl StatusBar {
                 sidebar.show_toggle && !sidebar.open && sidebar.side == SidebarSide::Left,
                 |this| this.child(self.render_sidebar_toggle(sidebar, cx)),
             )
-            .children(self.left_items.iter().enumerate().map(|(index, item)| {
-                render_hideable_item("status-bar-left", index, item.as_ref(), cx)
+            .children(self.left_items.iter().enumerate().filter_map(|(index, item)| {
+                if self.vertical && item.hidden_in_vertical_bar(cx) {
+                    return None;
+                }
+                Some(render_hideable_item(
+                    "status-bar-left",
+                    index,
+                    item.as_ref(),
+                    cx,
+                ))
             }))
     }
 
@@ -231,8 +246,16 @@ impl StatusBar {
                     .iter()
                     .enumerate()
                     .rev()
-                    .map(|(index, item)| {
-                        render_hideable_item("status-bar-right", index, item.as_ref(), cx)
+                    .filter_map(|(index, item)| {
+                        if self.vertical && item.hidden_in_vertical_bar(cx) {
+                            return None;
+                        }
+                        Some(render_hideable_item(
+                            "status-bar-right",
+                            index,
+                            item.as_ref(),
+                            cx,
+                        ))
                     }),
             )
             .when(
@@ -493,6 +516,10 @@ impl StatusBar {
 }
 
 impl<T: StatusItemView> StatusItemViewHandle for Entity<T> {
+    fn hidden_in_vertical_bar(&self, cx: &App) -> bool {
+        self.read(cx).hidden_in_vertical_bar()
+    }
+
     fn to_any(&self) -> AnyView {
         self.clone().into()
     }

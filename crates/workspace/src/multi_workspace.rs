@@ -2105,6 +2105,7 @@ impl Render for MultiWorkspace {
                 .h_full()
                 .w(px(36.))
                 .flex_shrink_0()
+                .pt(ui::utils::platform_title_bar_height(window))
                 .bg(colors.panel_background)
                 .border_r_1()
                 .border_color(colors.border)
@@ -2112,9 +2113,7 @@ impl Render for MultiWorkspace {
                 .child(
                     div()
                         .id("activity-bar-status")
-                        .flex_1()
-                        .min_h_0()
-                        .overflow_y_scroll()
+                        .flex_shrink_0()
                         .child(status_bar),
                 )
                 .into_any_element()

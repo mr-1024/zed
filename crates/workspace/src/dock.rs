@@ -1593,7 +1593,7 @@ impl Render for PanelButtons {
         div()
             .flex()
             .gap_1()
-            .when(vertical, |this| this.flex_col().w_full().px_1().py_2().items_center())
+            .when(vertical, |this| this.flex_col().w_full().px_1().pt_1().items_center())
             .when(!vertical, |this| this.items_center())
             .when(
                 !vertical

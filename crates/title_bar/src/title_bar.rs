@@ -1095,6 +1095,30 @@ impl TitleBar {
                     )
                 })
                 .children(branch_picker)
+                .map(|this| {
+                    let summary = self.project.read(cx).diagnostic_summary(false, cx);
+                    if summary.error_count == 0 && summary.warning_count == 0 {
+                        return this;
+                    }
+                    this.child(
+                        h_flex()
+                            .gap_1()
+                            .when(summary.error_count > 0, |this| {
+                                this.child(
+                                    Label::new(format!("\u{2715} {}", summary.error_count))
+                                        .size(LabelSize::XSmall)
+                                        .color(Color::Error),
+                                )
+                            })
+                            .when(summary.warning_count > 0, |this| {
+                                this.child(
+                                    Label::new(format!("! {}", summary.warning_count))
+                                        .size(LabelSize::XSmall)
+                                        .color(Color::Warning),
+                                )
+                            }),
+                    )
+                })
                 .into_any_element(),
         )
     }

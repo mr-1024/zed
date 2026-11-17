@@ -53,6 +53,10 @@ impl Render for LineEndingIndicator {
 }
 
 impl StatusItemView for LineEndingIndicator {
+    fn hidden_in_vertical_bar(&self) -> bool {
+        true
+    }
+
     fn set_active_pane_item(
         &mut self,
         active_pane_item: Option<&dyn ItemHandle>,

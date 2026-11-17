@@ -725,6 +725,10 @@ impl Render for MergeConflictIndicator {
 }
 
 impl StatusItemView for MergeConflictIndicator {
+    fn hidden_in_vertical_bar(&self) -> bool {
+        true
+    }
+
     fn set_active_pane_item(
         &mut self,
         _: Option<&dyn ItemHandle>,
